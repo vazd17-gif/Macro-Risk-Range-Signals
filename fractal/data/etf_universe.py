@@ -18,7 +18,7 @@ from __future__ import annotations
 
 RAW = """
 AAAU, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BNO, BUXX, BWET, CANE, CIBR, CLOX,
-CLOZ, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
+CLOZ, COPX, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
 EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWW, EZA, EFNL,
 EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GII, GLD, GLIN,
 GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
@@ -30,12 +30,14 @@ UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF, XLI, XLK, XLP, XLU,
 XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 """
 
-# Highest daily dollar-volume S&P 500 names. Berkshire is carried as BRK-B: the
-# data feed does not recognise the BRK.B form.
+# Single names: the highest daily dollar-volume S&P 500 constituents, plus any
+# individually requested symbol. SBSW (Sibanye Stillwater) is one of the latter --
+# a NYSE-listed South African PGM miner, not an index member. Berkshire is carried
+# as BRK-B: the data feed does not recognise the BRK.B form.
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
-AMAT, SNDK
+AMAT, SNDK, SBSW
 """
 
 
@@ -75,7 +77,7 @@ GROUPS = {
                      "COLO", "GLIN", "INDA", "INDY", "SMIN", "IDX", "JPXN", "SCJ",
                      "KSA", "KWT", "TUR", "UAE", "FXI", "KWEB"],
     "commodity":    ["GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "DUST",
-                     "PALL", "PPLT", "CPER", "DBC", "USO", "BNO", "UGA",
+                     "PALL", "PPLT", "CPER", "COPX", "DBC", "USO", "BNO", "UGA",
                      "UNG", "FCG", "CORN", "WEAT", "SOYB", "CANE", "BDRY", "BWET"],
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
@@ -84,7 +86,7 @@ GROUPS = {
     "stock":        ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "AVGO", "META",
                      "TSLA", "BRK-B", "MU", "LLY", "JPM", "WMT", "AMD", "V", "JNJ",
                      "XOM", "MA", "INTC", "ABBV", "PLTR", "BAC", "ORCL", "CSCO",
-                     "COST", "CVX", "KO", "LRCX", "CAT", "AMAT", "SNDK"],
+                     "COST", "CVX", "KO", "LRCX", "CAT", "AMAT", "SNDK", "SBSW"],
 }
 
 
