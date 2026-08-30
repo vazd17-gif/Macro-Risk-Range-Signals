@@ -550,8 +550,8 @@ an unusually light one (z &le; &minus;2).
        "".join('<div class="card" style="border-left-color:%s"><div class="k">%s</div>'
                '<div class="v">%s</div></div>' % (c, k, v) for k, v, c in cards),
        alerts_html,
-       vol_html,
        pf_html,
+       vol_html,
        "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s.title())
                for s in SIGNAL_ORDER),
        "".join('<button data-grp="%s" aria-pressed="false">%s</button>'
@@ -772,7 +772,9 @@ def render_newsletter(df, params, generated=None, book=None):
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
             % (len(outl), "".join(rowsv)))
 
-    # volatility complex, above the full list
+    # The volatility complex reads before the signals rather than after them: which
+    # VIX bucket you are in decides how much any of the signals below is worth
+    # acting on, so it belongs above them, not in an appendix.
     idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
     if len(idx):
         note, ncol = _vol_regime(idx)
@@ -785,7 +787,7 @@ def render_newsletter(df, params, generated=None, book=None):
             'TRADE %s &middot; TREND %s</div></td></tr>'
             % (tk, _f(spot), col, read, _f(trade), _f(trend))
             for tk, spot, trade, trend, read, col in _index_rows(idx))
-        sections += (
+        sections = (
             '<tr><td style="padding:22px 0 6px">'
             '<span style="display:inline-block;background:#334155;color:#fff;font-size:12px;'
             'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
@@ -793,7 +795,7 @@ def render_newsletter(df, params, generated=None, book=None):
             '<div style="margin-top:9px">' + _vix_meter(idx, email=True) + '</div>'
             '<div style="color:%s;font-size:12.5px;margin-top:7px">%s</div></td></tr>'
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
-            % (ncol, note, items))
+            % (ncol, note, items)) + sections
 
     # appendix: every name, compact
     app = []
