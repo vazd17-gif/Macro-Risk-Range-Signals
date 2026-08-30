@@ -225,10 +225,14 @@ def _action(side, sig, at_low, at_high, event):
             return A_TRIM, "%s - sell some, TREND still holds" % (event or "TRADE broke")
         if sig == S.BREAKOUT:
             return A_LONG, "broke out above the RANGE and held - add"
+        # Any BUY is acted on, wherever price sits. This used to require at_low,
+        # which was fine while the only way to reach ADD LONG was from the low end;
+        # a re-entry on a reclaimed TRADE arrives mid-range and was silently
+        # becoming a HOLD -- the book being told to buy and doing nothing.
+        if sig == S.ADD_LONG:
+            return A_LONG, "buy - %s" % (event or "signal is bullish")
         if at_high:
             return A_TRIM, "at the high end of the RANGE - sell some into strength"
-        if at_low and sig == S.ADD_LONG:
-            return A_LONG, "at the low end and still bullish - add"
         return A_HOLD, ""
     # short
     if sig == S.COVER_SHORT:

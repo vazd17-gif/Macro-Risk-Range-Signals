@@ -419,6 +419,14 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return REMOVE_LONG, event + " with TREND already bearish - exit"
     if recl_trade and trend_bull is False:
         return COVER_SHORT, event + " to the upside - cover, wait for the model to re-short"
+    # The re-entry. Selling on a TRADE break inside a bullish TREND is only half a
+    # rule -- something has to say when to come back, and the same line coming back
+    # is that signal. Without this the model sold and then went silent, and reported
+    # the reclaim as "close the short" on a name nothing was short. Safe by
+    # construction: a short in a bullish-TREND name would already have been closed
+    # by the TREND reclaim one tier up.
+    if recl_trade and trend_bull:
+        return ADD_LONG, event + " with TREND still bullish - buy it back"
     if recl_trade:
         return COVER_SHORT, event + " - close the short"
     # A TREND event that yielded to a fresher TRADE one still stands behind it.
@@ -464,9 +472,11 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
     if buy_low and trend_bull:
         return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    if sell_high and (trade_bull is False or trend_bull is False):
-        both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
-                else ("TRADE" if trade_bull is False else "TREND"))
+    # A short needs a bearish TREND, not merely a bearish TRADE. A bullish-TREND
+    # name at the top of its range is a position to take something off, not one to
+    # short, and it falls through to the trim below.
+    if sell_high and trend_bull is False:
+        both = "TRADE and TREND" if trade_bull is False else "TREND"
         return ADD_SHORT, "high end of RANGE, bearish %s" % both
     if sell_high and trend_bull:
         return TRIM_LONG, "high end of RANGE in a bullish TREND - take some off"
