@@ -17,12 +17,47 @@ alerts worth surfacing at the top of the screen.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 
 import numpy as np
 import pandas as pd
 
 from . import signals as S
+from ..data.loader import next_session
 from ..data.etf_universe import yf_symbol
+
+
+LOCKS = ("out", ".locked")
+
+
+def _lock_path():
+    from ..data.loader import repo_path
+    return repo_path(*LOCKS)
+
+
+def load_locks(session):
+    """{ticker: "lost"|"reclaimed"} for TRADE, for this session only.
+
+    A level touched during the session is a decision taken, and it stands until the
+    next one. Without this the ten-minute job would unwind its own trade the moment
+    price crossed back: sell at 10am on a broken TRADE, buy it back at 2pm on the
+    reclaim, and do it again tomorrow. The lock is what makes the touch a trade
+    rather than a running commentary on where price is.
+    """
+    try:
+        with open(_lock_path()) as fh:
+            st = json.load(fh)
+        return dict(st.get("locked", {})) if st.get("session") == session else {}
+    except Exception:
+        return {}
+
+
+def save_locks(session, locked):
+    p = _lock_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w") as fh:
+        json.dump({"session": session, "locked": locked}, fh, indent=1)
 
 
 def quotes(tickers, chunk=60, with_times=False):
@@ -64,7 +99,7 @@ def quotes(tickers, chunk=60, with_times=False):
     return (out, when) if with_times else out
 
 
-def reprice(df, px=None, edge=S.EDGE, times=None):
+def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
     """Return a copy of the signal frame re-priced to live quotes.
 
     Levels are untouched. Spot, range position, the bull/bear reads, the state and
@@ -90,6 +125,12 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
     # volatility regime is a close-to-close judgement like TREND.
     edge_buy = df.attrs.get("edge_buy") or S.EDGE_BUY
     edge_sell = df.attrs.get("edge_sell") or S.EDGE_SELL
+
+    # A TRADE level touched earlier in this session is a trade already taken, and it
+    # is not unwound if price crosses back before the close.
+    session = str(next_session(asof) or "")
+    locked = dict(load_locks(session)) if locks is None else dict(locks)
+    fresh_lock = False
     out = df.copy()
     out["close_spot"] = out["spot"]
     out["intraday"] = ""
@@ -139,10 +180,18 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         # strict inequality that demanded price go through it, both said nothing
         # happened. The line is the decision, so arriving at it is the event.
         crossed = []
-        if was_trade is not None and np.isfinite(trade):
+        held = locked.get(r["ticker"])
+        if held:
+            # Already acted on today. It stands whatever price has done since.
+            crossed.append(held + " TRADE")
+            now_trade = held == "reclaimed"
+        elif was_trade is not None and np.isfinite(trade):
             touched = spot <= trade if was_trade else spot >= trade
             if touched:
-                crossed.append(("lost " if was_trade else "reclaimed ") + "TRADE")
+                way = "lost" if was_trade else "reclaimed"
+                crossed.append(way + " TRADE")
+                locked[r["ticker"]] = way
+                fresh_lock = True
 
         # Read against live price, because Hedgeye adds on where price is now, not
         # where it closed. Their three adds on 2026-08-28 all sat mid-range on the
@@ -231,6 +280,9 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
               .drop(columns=["_x", "_r"]).reset_index(drop=True))
     # With every quote stale the frame is just the daily build, so it is not
     # labelled live -- a "live" stamp over yesterday's closes is a lie.
+    if persist and fresh_lock and session:
+        save_locks(session, locked)
+    out.attrs["locked"] = locked
     n_live = int(out["live"].sum())
     if n_live:
         out.attrs["live_at"] = dt.datetime.now()

@@ -14,6 +14,7 @@ fractal/out/*.csv
 fractal/out/*.eml
 fractal/out/.last_sent
 fractal/out/.alerted
+fractal/out/.locked
 
 # Never commit credentials. The app password lives in the Windows user
 # environment (FRACTAL_SMTP_PASS), never in the repo.
