@@ -112,27 +112,81 @@ def _fmt(x):
     return ("%.2f" if abs(x) < 1000 else "%.0f") % x
 
 
-def events(df):
-    """(key, line, urgent) for everything currently worth a push.
+def _num(x):
+    """None for anything not a real number, so callers can test once."""
+    if x is None or x != x:
+        return None
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
 
-    A crossing outranks an edge: crossing a line is a change of state, sitting at an
-    edge is a condition that can persist for days.
+
+def _detail(r):
+    """The lines that make a notification worth reading without opening anything.
+
+    On iOS a notification cannot hand off to an installed web app -- tapping it
+    always lands in Safari -- so the alert has to carry the decision itself: where
+    spot is, the range it sits in, and both duration lines. Three lines is what an
+    expanded iOS banner shows without truncating.
+    """
+    lines = []
+
+    head = "Spot " + _fmt(_num(getattr(r, "spot", None)))
+    chg = _num(getattr(r, "chg_pct", None))
+    if chg is not None and abs(chg) >= 0.05:   # below this it rounds to "-0.0%"
+        head += "  %+.1f%% today" % chg
+    lines.append(head)
+
+    lo, hi = _num(getattr(r, "range_low", None)), _num(getattr(r, "range_high", None))
+    if lo is not None and hi is not None:
+        rng = "Range %s - %s" % (_fmt(lo), _fmt(hi))
+        pos = _num(getattr(r, "pos_in_range", None))
+        if pos is not None:
+            rng += "  %d%% in" % round(100 * min(max(pos, 0.0), 1.0))
+        lines.append(rng)
+
+    trade, trend = _num(getattr(r, "trade", None)), _num(getattr(r, "trend", None))
+    if trade is not None or trend is not None:
+        lines.append("TRADE %s  TREND %s" % (_fmt(trade), _fmt(trend)))
+    return lines
+
+
+def events(df):
+    """(key, title, body, short, urgent) for everything currently worth a push.
+
+    `short` is the one-line form used when several fire at once and go as a digest;
+    `body` is the full read used when an alert travels on its own.
+
+    A crossing outranks a signal: crossing a line is a change of state, whereas a
+    signal can restate a condition that has held for days.
     """
     out = []
     for r in df.itertuples():
         if getattr(r, "is_index", False) or getattr(r, "cash_like", False):
             continue
         tk = r.ticker
+        spot = _fmt(_num(getattr(r, "spot", None)))
+
         cross = getattr(r, "intraday", "")
         cross = "" if (cross is None or cross != cross) else str(cross).strip()
         if cross:
             out.append(("%s|%s" % (tk, cross),
-                        "%s %s at %s" % (tk, cross, _fmt(r.spot)), True))
+                        "%s %s" % (tk, cross),
+                        "\n".join(_detail(r)),
+                        "%s %s at %s" % (tk, cross, spot),
+                        True))
             continue
+
         sig = getattr(r, "signal", None)
         if sig in (ADD_LONG, ADD_SHORT, REMOVE_LONG, COVER_SHORT):
+            why = getattr(r, "why", "") or ""
+            why = "" if why != why else str(why).strip()
+            body = _detail(r) + ([why] if why else [])
             out.append(("%s|%s" % (tk, sig),
-                        "%s %s at %s - %s" % (tk, sig, _fmt(r.spot), getattr(r, "why", "")),
+                        "%s %s" % (tk, sig),
+                        "\n".join(body),
+                        "%s %s at %s%s" % (tk, sig, spot, " - " + why if why else ""),
                         sig in (REMOVE_LONG, COVER_SHORT)))
     return out
 
@@ -197,15 +251,16 @@ def notify(df, asof="", verbose=True, dry=False, seed=False):
         return 0
 
     if len(new) <= DIGEST_AT:
-        for _, line, urgent in new:
+        for _key, title, body, _short, urgent in new:
             if not dry:
-                send("Risk Range alert", line, urgent)
+                send(title, body, urgent)
             if verbose:
-                print("  push: " + line)
+                print("  push: %s\n         %s"
+                      % (title, body.replace("\n", "\n         ")))
     else:
-        body = "\n".join(e[1] for e in new)
+        body = "\n".join(e[3] for e in new)
         if not dry:
-            send("Risk Range: %d alerts" % len(new), body, any(e[2] for e in new))
+            send("Risk Range: %d alerts" % len(new), body, any(e[4] for e in new))
         if verbose:
             print("  push digest (%d):\n    %s" % (len(new), body.replace("\n", "\n    ")))
 
