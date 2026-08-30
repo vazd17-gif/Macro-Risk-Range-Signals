@@ -1,3 +1,2 @@
 ticker,side,entry_date,entry_price,shares,notes,status,exit_date,exit_price
-PALL,long,2026-08-28,25.790000915527344,,auto: BREAKOUT,open,,
 WEAT,long,2026-08-28,28.0,,auto: BREAKOUT,open,,
