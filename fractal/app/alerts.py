@@ -51,13 +51,6 @@ TAGS = {
     "lost":       "red_circle",
     "reclaimed":  "large_blue_circle",
     "digest":     "bar_chart",
-    # A name about to break takes the colour of the break it would be, so the phone
-    # reads the same as the strip. "mixed" is a name resting on both lines pointing
-    # opposite ways, where neither read is available.
-    "bearish":    "red_circle",
-    "bullish":    "large_blue_circle",
-    "mixed":      "orange_circle",
-    "on_line":    "white_circle",
 }
 
 Event = collections.namedtuple("Event", "key title body short urgent tag")
@@ -266,25 +259,6 @@ def events(df):
                 short="%s %s at %s%s" % (tk, sig, spot, " - " + why if why else ""),
                 urgent=sig in (REMOVE_LONG, COVER_SHORT),
                 tag=TAGS.get(sig, "")))
-            continue
-
-        # Resting on a duration line. Not a signal -- nothing has happened yet --
-        # so it ranks below one, and below a crossing. The daily job seeds these,
-        # so what actually reaches the phone is a name that arrived at a line
-        # during the session rather than one that opened sitting on it.
-        line = getattr(r, "on_line", "")
-        line = "" if (line is None or line != line) else str(line).strip()
-        if line:
-            way = getattr(r, "on_line_dir", "")
-            way = "" if (way is None or way != way) else str(way).strip()
-            label = line + (" - " + way if way else "")
-            out.append(Event(
-                key="%s|%s" % (tk, line),
-                title="%s %s" % (tk, label),
-                body=nl.join(_detail(r)),
-                short="%s %s at %s" % (tk, label, spot),
-                urgent=False,
-                tag=TAGS.get(way, TAGS["on_line"])))
     return out
 
 

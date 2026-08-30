@@ -136,9 +136,6 @@ def reprice(df, px=None, edge=S.EDGE):
         out.at[i, "trend_bull"] = now_trend
         out.at[i, "at_low"] = bool(at_low)
         out.at[i, "at_high"] = bool(at_high)
-        line_txt, line_dir = S.on_line(spot, trade, trend, lo, hi)
-        out.at[i, "on_line"] = line_txt
-        out.at[i, "on_line_dir"] = line_dir
         out.at[i, "pct_to_low"] = 100 * (lo / spot - 1) if np.isfinite(lo) else np.nan
         out.at[i, "pct_to_high"] = 100 * (hi / spot - 1) if np.isfinite(hi) else np.nan
         out.at[i, "pct_to_trade"] = 100 * (trade / spot - 1) if np.isfinite(trade) else np.nan

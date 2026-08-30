@@ -311,20 +311,6 @@ def render_dashboard(df, params, generated=None, book=None):
             alerts.append((1, h.ticker, "#0ea37f", "at the low end", _f(h.spot)))
         elif getattr(h, "at_high", False):
             alerts.append((1, h.ticker, "#d9a441", "at the high end", _f(h.spot)))
-    # Names resting on a duration line. Nothing has happened to them yet, which is
-    # why they rank below both other kinds -- but they are the shortest list of
-    # names that could produce a signal before the close. The chip takes the colour
-    # of the break that would follow if price keeps going, so the strip reads the
-    # same way whether a line has been crossed or is about to be.
-    WAY = {"bearish": "#ef5350", "bullish": "#5c9ded", "mixed": "#d9a441"}
-    seen = {a[1] for a in alerts}
-    for h in df.itertuples():
-        line = (getattr(h, "on_line", "") or "").strip()
-        if line and h.ticker not in seen and not getattr(h, "cash_like", False):
-            way = (getattr(h, "on_line_dir", "") or "").strip()
-            alerts.append((2, h.ticker, WAY.get(way, "#8b94a5"),
-                           line + (" - " + way if way else ""), _f(h.spot)))
-
     alerts_html = ""
     if alerts:
         alerts.sort(key=lambda a: (a[0], a[1]))
@@ -337,15 +323,12 @@ def render_dashboard(df, params, generated=None, book=None):
             % (tk, col, col, tk, col, html.escape(label), spot)
             for _, tk, col, label, spot in alerts)
         n_cross = sum(1 for a in alerts if a[0] == 0)
-        n_edge = sum(1 for a in alerts if a[0] == 1)
-        n_line = sum(1 for a in alerts if a[0] == 2)
+        n_edge = len(alerts) - n_cross
         bits = []
         if n_cross:
             bits.append("%d crossed a line" % n_cross)
         if n_edge:
             bits.append("%d at a range edge" % n_edge)
-        if n_line:
-            bits.append("%d about to break" % n_line)
         alerts_html = (
             '<div style="border:1px solid #3d4a5c;background:#141a22;border-radius:10px;'
             'padding:13px 15px;margin-bottom:20px">'
