@@ -35,6 +35,11 @@ SIG_STYLE = {
 BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
 
 
+# A volatility index is coloured by what it means for everything else, not by which
+# side of its own TREND it sits on -- falling vol is the green case.
+STANCE_COL = {"supportive": "#0ea37f", "risk_off": "#ef5350", "mixed": "#d9a441"}
+
+
 def _trend_col(trend_bull):
     """Ticker colour: green above TREND, red below, grey where TREND is unknown."""
     return BULL if trend_bull else BEAR if trend_bull is False else FLAT
@@ -308,17 +313,24 @@ def render_dashboard(df, params, generated=None, book=None):
     alerts = []
     if "intraday" in df:
         for h in df[df["intraday"].astype(bool)].itertuples():
+            if getattr(h, "is_index", False):
+                label, stance = S.vol_read(cross=h.intraday)
+                col = STANCE_COL.get(stance, FLAT)
+                alerts.append((0, h.ticker, col, label, _f(h.spot), col))
+                continue
             lost = h.intraday.startswith("lost")
             alerts.append((0, h.ticker, "#ef5350" if lost else "#5c9ded",
                            h.intraday, _f(h.spot), _trend_col(h.trend_bull)))
     seen = {a[1] for a in alerts}
     for h in df.itertuples():
-        # Indices are carried for context and never raise a position, so an edge on
-        # one is not an alert. The signal engine and the phone already exclude them;
-        # only this strip did not, and a "VIX at the low end" chip would read as an
-        # instruction to buy something that cannot be bought.
-        if (h.ticker in seen or getattr(h, "cash_like", False)
-                or getattr(h, "is_index", False)):
+        if h.ticker in seen or getattr(h, "cash_like", False):
+            continue
+        if getattr(h, "is_index", False):
+            label, stance = S.vol_read(at_low=getattr(h, "at_low", False),
+                                       at_high=getattr(h, "at_high", False))
+            if label:
+                col = STANCE_COL.get(stance, FLAT)
+                alerts.append((1, h.ticker, col, label, _f(h.spot), col))
             continue
         if getattr(h, "at_low", False):
             alerts.append((1, h.ticker, BULL, "at the low end", _f(h.spot),
@@ -453,7 +465,9 @@ def render_dashboard(df, params, generated=None, book=None):
 Green level = price above it (bullish for that duration), red = below.
 A ticker is coloured by TREND, so a red ticker inside a green &ldquo;at the low end&rdquo;
 chip is a name at the bottom of its range that is below TREND &mdash; the one case the
-handbook says not to buy.
+handbook says not to buy. VIX and MOVE are the exception: they carry no position, so
+they are coloured by what they mean for everything else &mdash; green when volatility
+is falling, red when it is rising.
 &ldquo;In range&rdquo; shows where spot sits between the low and high edge.
 Volume is shown as a z-score of log volume against the fund's own 1-month and
 3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue

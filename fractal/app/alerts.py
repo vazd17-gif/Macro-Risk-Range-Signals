@@ -31,7 +31,7 @@ import os
 import urllib.parse
 import urllib.request
 
-from .signals import ADD_LONG, ADD_SHORT, REMOVE_LONG, COVER_SHORT
+from .signals import ADD_LONG, ADD_SHORT, REMOVE_LONG, COVER_SHORT, vol_read
 
 STATE = ("out", ".alerted")
 TIMEOUT = 15
@@ -51,6 +51,12 @@ TAGS = {
     "lost":       "red_circle",
     "reclaimed":  "large_blue_circle",
     "digest":     "bar_chart",
+    # A volatility index is tagged by what it means for everything else, not by
+    # which way it moved: falling vol is the green case even though the same event
+    # on an ETF would be red.
+    "supportive": "green_circle",
+    "risk_off":   "red_circle",
+    "mixed":      "orange_circle",
 }
 
 Event = collections.namedtuple("Event", "key title body short urgent tag")
@@ -218,13 +224,33 @@ def events(df):
     nl = chr(10)
     out = []
     for r in df.itertuples():
-        if getattr(r, "is_index", False) or getattr(r, "cash_like", False):
+        if getattr(r, "cash_like", False):
             continue
         tk = r.ticker
         spot = _fmt(_num(getattr(r, "spot", None)))
 
         cross = getattr(r, "intraday", "")
         cross = "" if (cross is None or cross != cross) else str(cross).strip()
+
+        # A volatility index never carries a position, so it never produces a
+        # signal -- but a regime shift in it frames every other name on the page,
+        # which is the whole reason it is worth waking a phone for.
+        if getattr(r, "is_index", False):
+            label, stance = vol_read(cross=cross,
+                                     at_low=bool(getattr(r, "at_low", False)),
+                                     at_high=bool(getattr(r, "at_high", False)))
+            if label:
+                note = {"supportive": "Falling volatility - supportive for risk assets.",
+                        "risk_off": "Rising volatility - a headwind for risk assets.",
+                        "mixed": "Volatility mixed across durations."}.get(stance, "")
+                out.append(Event(
+                    key="%s|%s" % (tk, label),
+                    title="%s %s" % (tk, label),
+                    body=nl.join(_detail(r) + ([note] if note else [])),
+                    short="%s %s at %s" % (tk, label, spot),
+                    urgent=bool(cross),
+                    tag=TAGS.get(stance, "")))
+            continue
         if cross:
             out.append(Event(
                 key="%s|%s" % (tk, cross),

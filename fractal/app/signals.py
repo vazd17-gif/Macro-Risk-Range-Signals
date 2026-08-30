@@ -251,6 +251,34 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     }
 
 
+def vol_read(cross="", at_low=False, at_high=False):
+    """(label, stance) for a volatility-index event, or ("", "") for nothing.
+
+    VIX and MOVE never carry a position, so the ordinary reads do not apply: an
+    index at the low end of its range is not a buy, and a broken TREND on it is not
+    a sell. What they carry is the weather for everything else, and that inverts
+    the colour convention -- falling volatility is supportive for risk assets, so it
+    is the green case, while the same event on an ETF would be red.
+
+    Because the inversion is the sort of thing a reader will not hold in their head,
+    the label always says which way volatility went, and never says buy or sell.
+    """
+    if cross:
+        down, up = "lost" in cross, "reclaimed" in cross
+        if down and up:
+            return cross + " - vol mixed", "mixed"
+        if down:
+            return cross + " - vol falling", "supportive"
+        if up:
+            return cross + " - vol rising", "risk_off"
+        return cross, ""
+    if at_high:
+        return "at the high end - vol elevated", "risk_off"
+    if at_low:
+        return "at the low end - vol subdued", "supportive"
+    return "", ""
+
+
 def line_band(range_low, range_high):
     """Distance from a duration line inside which price counts as sitting on it."""
     if not (np.isfinite(range_low) and np.isfinite(range_high)) or range_high <= range_low:
