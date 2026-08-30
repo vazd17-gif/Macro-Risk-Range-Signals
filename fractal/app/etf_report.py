@@ -25,16 +25,21 @@ from . import portfolio as P
 from ..data.etf_names import short_names
 
 # ---------------------------------------------------------------- shared bits
+# Keyed by the heading shown rather than by the signal, because several signals
+# report under one order: price at the low end, a volume breakout and a short being
+# closed are all buys. The per-row `why` keeps the reason they differ.
 SIG_STYLE = {
-    S.ADD_LONG:    ("#0ea37f", "Buy - price at the low end of the RANGE with the signal still bullish"),
-    S.BREAKOUT:    ("#2ecc9a", "Add long - closed above the RANGE high on heavy volume, TREND bullish"),
-    S.BREAKDOWN:   ("#c0392b", "Add short - closed below the RANGE low on heavy volume, TREND bearish"),
-    S.TRIM_LONG:   ("#d9a441", "Trim - TRADE has broken while TREND still holds; reduce, do not exit"),
-    S.TRIM_SHORT:  ("#d9a441", "Trim the short - TRADE reclaimed while TREND still bearish; buy back some"),
-    S.REMOVE_LONG: ("#ef5350", "Sell - has broken TRADE and/or TREND"),
-    S.ADD_SHORT:   ("#d9a441", "Short or avoid - price at the high end of the RANGE with a bearish signal"),
-    S.WATCHLIST:   ("#8b94a5", "Watchlist - at the low end but the signal has broken; nothing to act on yet"),
-    S.COVER_SHORT: ("#5c9ded", "Cover - a broken name has reclaimed TRADE and/or TREND"),
+    "BUY":        ("#0ea37f", "Buy - at the low end of the RANGE, or a volume breakout "
+                              "above the high end"),
+    "SELL SOME":  ("#d9a441", "Sell some - TRADE has broken while TREND still holds; "
+                              "trim, do not exit"),
+    "SELL":       ("#ef5350", "Sell - TREND has broken, or a volume breakdown"),
+    "SELL SHORT": ("#c0392b", "Sell short - at the high end of the RANGE with a "
+                              "bearish signal"),
+    "BUY SOME":   ("#5c9ded", "Buy some - TRADE reclaimed while TREND is still bearish; "
+                              "buy back part of the short"),
+    "COVER SHORT":("#5c9ded", "Cover - TREND reclaimed; close the short out"),
+    "WATCHLIST":  ("#8b94a5", "Watchlist - nothing to act on yet"),
 }
 BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
 
@@ -50,7 +55,7 @@ def _trend_col(trend_bull):
 
 
 # Long side first, then short, trims beside the full action they reduce.
-SIGNAL_ORDER = S.SIGNALS
+SIGNAL_ORDER = S.SECTIONS
 
 GROUP_LABEL = {
     "us_equity": "US Equity", "us_sector": "US Sectors", "us_smallcap": "US Small Cap",
@@ -312,9 +317,13 @@ code{background:#11151b;border:1px solid var(--line);border-radius:4px;padding:1
 """
 
 JS = """
-const rows=[...document.querySelectorAll('tbody tr')];let dir={};
-document.querySelectorAll('th').forEach((th,i)=>{th.onclick=()=>{dir[i]=!dir[i];
-const tb=document.querySelector('tbody');
+// Scoped to the scan table by id. Unscoped, the portfolio is a table too -- and in
+// a .tablewrap of its own, so selecting by class picks the wrong one -- and its
+// rows were swept up by every filter: switching to BUY hid your open positions.
+const scan=document.getElementById('scan');
+const rows=[...scan.querySelectorAll('tbody tr')];let dir={};
+scan.querySelectorAll('th').forEach((th,i)=>{th.onclick=()=>{dir[i]=!dir[i];
+const tb=scan.querySelector('tbody');
 rows.slice().sort((a,b)=>{const x=a.children[i].dataset.v??a.children[i].textContent,
 y=b.children[i].dataset.v??b.children[i].textContent;const nx=parseFloat(x),ny=parseFloat(y);
 const c=(!isNaN(nx)&&!isNaN(ny))?nx-ny:String(x).localeCompare(String(y));return dir[i]?-c:c;})
@@ -337,12 +346,15 @@ b.setAttribute('aria-pressed',on?'false':'true');apply();};});
 def render_dashboard(df, params, generated=None, book=None):
     generated = generated or dt.datetime.now()
     asof = df["asof"].max() if len(df) else "-"
-    counts = df["signal"].value_counts().to_dict()
+    counts = df["signal"].map(S.LABEL).value_counts().to_dict()
 
     body = []
     for r in df[~df.get("is_index", False)].itertuples() if "is_index" in df else df.itertuples():
         pos = float(np.clip(r.pos_in_range, 0, 1))
-        sig = r.signal or ""
+        # The pill and the filter both carry the heading; the reason survives in
+        # the "why" column, so a BUY row still says whether it is an edge, a
+        # breakout or a short being closed.
+        sig = S.label(r.signal) if r.signal else ""
         colour = SIG_STYLE.get(sig, ("#8b94a5", ""))[0]
         pill = ('<span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span>'
                 % (colour, colour, colour, html.escape(sig))) if sig else ""
@@ -372,7 +384,7 @@ def render_dashboard(df, params, generated=None, book=None):
 
     cards = [("Names", len(df), "var(--line)")]
     for name in SIGNAL_ORDER:
-        cards.append((name.title(), counts.get(name, 0), SIG_STYLE[name][0]))
+        cards.append((name, counts.get(name, 0), SIG_STYLE[name][0]))
 
     base_lbl = _weekday_label(asof)
 
@@ -532,7 +544,7 @@ def render_dashboard(df, params, generated=None, book=None):
 <button data-vol="dry" aria-pressed="false">Dry</button></div></div>
 <div class="frow"><span class="flab">Category</span><div class="fbtns">%s</div></div>
 </div>
-<div class="tablewrap"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>
+<div class="tablewrap"><table id="scan"><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>
 <footer>
 Green level = price above it (bullish for that duration), red = below.
 A ticker is coloured by TREND, so a red ticker inside a green &ldquo;at the low end&rdquo;
@@ -552,7 +564,7 @@ an unusually light one (z &le; &minus;2).
        alerts_html,
        pf_html,
        vol_html,
-       "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s.title())
+       "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s)
                for s in SIGNAL_ORDER),
        "".join('<button data-grp="%s" aria-pressed="false">%s</button>'
                % (g, GROUP_LABEL[g]) for g in groups),
@@ -696,44 +708,28 @@ def render_newsletter(df, params, generated=None, book=None):
               '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
               % (len(book), "".join(items)))
 
-    sections = "".join([
-        _nl_section("ADD LONG", SIG_STYLE[S.ADD_LONG][0],
-                    "Price is at or near the LOW end of the Risk Range and the signal is "
-                    "bullish TRADE and/or TREND.", b[S.ADD_LONG], "long", names),
-        _nl_section("BREAKOUT", SIG_STYLE[S.BREAKOUT][0],
-                    "Closed ABOVE the high end of the Risk Range on heavy volume with "
-                    "TREND bullish. Add long. Volume is what separates a breakout from a "
-                    "poke - watch whether it holds above tomorrow.",
-                    b[S.BREAKOUT], "event", names),
-        _nl_section("TRIM LONG", SIG_STYLE[S.TRIM_LONG][0],
-                    "TRADE has broken while TREND still holds. Reduce the position to lock "
-                    "in gains - this is a trim, not an exit. TREND is what decides whether "
-                    "you hold at all.",
-                    b[S.TRIM_LONG], "event", names),
-        _nl_section("REMOVE LONG", SIG_STYLE[S.REMOVE_LONG][0],
-                    "TREND has broken. That is a regime change rather than a wobble, so "
-                    "the position comes off entirely.",
-                    b[S.REMOVE_LONG], "event", names),
-        _nl_section("ADD SHORT", SIG_STYLE[S.ADD_SHORT][0],
-                    "Price is at or near the HIGH end of the Risk Range and the signal is "
-                    "bearish TRADE and/or TREND. Short, or avoid if long-only.",
-                    b[S.ADD_SHORT], "short", names),
-        _nl_section("BREAKDOWN", SIG_STYLE[S.BREAKDOWN][0],
-                    "Closed BELOW the low end of the Risk Range on heavy volume with TREND "
-                    "bearish. Add short. Watch whether it stays below tomorrow.",
-                    b[S.BREAKDOWN], "event", names),
-        _nl_section("TRIM SHORT", SIG_STYLE[S.TRIM_SHORT][0],
-                    "TRADE has been reclaimed while TREND is still bearish. Buy back some "
-                    "of the short - reduce it, do not close it.",
-                    b[S.TRIM_SHORT], "event", names),
-        _nl_section("COVER SHORT", SIG_STYLE[S.COVER_SHORT][0],
-                    "TREND has been reclaimed. Close the short out.",
-                    b[S.COVER_SHORT], "event", names),
-        _nl_section("WATCHLIST", SIG_STYLE[S.WATCHLIST][0],
-                    "At the low end of the Risk Range but the signal has broken. Worth "
-                    "watching - no action yet. Wait for TREND support to hold before buying.",
-                    b[S.WATCHLIST], "event", names),
-    ])
+    blurbs = {
+        "BUY": ("Buy. Price at or near the LOW end of the Risk Range with the signal "
+                "still bullish, or a volume breakout above the high end. Each line says "
+                "which."),
+        "SELL SOME": ("Trim. TRADE has broken while TREND still holds, so the position "
+                      "comes down but does not come off - TREND is what decides whether "
+                      "you hold at all."),
+        "SELL": ("Sell. TREND has broken, which is a regime change rather than a wobble, "
+                 "or price has broken DOWN through the low end on heavy volume."),
+        "SELL SHORT": ("Short, or avoid if long-only. Price at or near the HIGH end of "
+                       "the Risk Range with a bearish signal."),
+        "BUY SOME": ("Buy back part of the short. TRADE has been reclaimed while TREND "
+                     "is still bearish - reduce it, do not close it."),
+        "COVER SHORT": ("TREND has been reclaimed. Close the short out."),
+        "WATCHLIST": ("Nothing to act on yet. At an extreme of the Risk Range but the "
+                      "signal has not confirmed, or a break that failed to hold."),
+    }
+    kinds = {"BUY": "long", "SELL SHORT": "short"}
+    sections = "".join(
+        _nl_section(name, SIG_STYLE[name][0], blurbs[name], b[name],
+                    kinds.get(name, "event"), names)
+        for name in S.SECTIONS)
     if not sections:
         sections = ('<tr><td style="padding:26px 0;color:#5a6270">No ETF triggered a signal '
                     'today. Everything on the list is mid-range with no fresh line breaks.</td></tr>')
@@ -823,11 +819,11 @@ def render_newsletter(df, params, generated=None, book=None):
                            tc, _f(r.trade), nc, _f(r.trend),
                            _z_cell(r.vol_z_1m), _z_cell(r.vol_z_3m)))
 
-    counts = df["signal"].value_counts().to_dict()
+    counts = df["signal"].map(S.LABEL).value_counts().to_dict()
     chips = "".join(
         '<span style="display:inline-block;background:%s22;color:%s;border:1px solid %s55;'
         'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0">'
-        '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s.title(),
+        '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s,
                           counts.get(s, 0))
         for s in SIGNAL_ORDER)
 
@@ -923,7 +919,7 @@ def main():
         print("portfolio: %d open | since entry %+.2f%% | since the baseline close %+.2f%% | %s"
               % (len(book), book["pnl_pct"].mean(), book["since_close_pct"].mean(),
                  "  ".join("%s=%d" % kv for kv in book["action"].value_counts().items())))
-    counts = df["signal"].value_counts().to_dict()
+    counts = df["signal"].map(S.LABEL).value_counts().to_dict()
     print("%s | %s" % (_universe_label(df), "  ".join(
         "%s=%d" % (k, counts.get(k, 0))
         for k in SIGNAL_ORDER)))

@@ -485,7 +485,35 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
 SIGNALS = (BREAKOUT, ADD_LONG, TRIM_LONG, REMOVE_LONG,
            BREAKDOWN, ADD_SHORT, TRIM_SHORT, COVER_SHORT, WATCHLIST)
 
+# The report is organised by the order you would place, not by the reason it fired.
+# Several reasons produce the same order -- price at the low end, a breakout, and a
+# short being closed are all buys -- so they share a heading, and the per-row `why`
+# keeps the reason. The signal constants stay distinct because they are dictionary
+# keys and identity here has to survive the merge.
+LABEL = {
+    ADD_LONG: "BUY",         BREAKOUT: "BUY",
+    TRIM_LONG: "SELL SOME",
+    REMOVE_LONG: "SELL",     BREAKDOWN: "SELL",
+    ADD_SHORT: "SELL SHORT",
+    TRIM_SHORT: "BUY SOME",
+    COVER_SHORT: "COVER SHORT",
+    WATCHLIST: "WATCHLIST",
+}
+SECTIONS = ("BUY", "SELL SOME", "SELL", "SELL SHORT", "BUY SOME",
+            "COVER SHORT", "WATCHLIST")
+
+
+def label(sig):
+    """Display heading for a signal."""
+    return LABEL.get(sig, sig or "")
+
+
+def members(section):
+    """The signals that report under one heading, in ladder order."""
+    return tuple(sig for sig in SIGNALS if LABEL.get(sig) == section)
+
 
 def buckets(df):
-    """Signal name -> rows, in the order the newsletter presents them."""
-    return {name: df[df["signal"] == name] for name in SIGNALS}
+    """Section heading -> rows, in the order the newsletter presents them."""
+    lab = df["signal"].map(LABEL)
+    return {name: df[lab == name] for name in SECTIONS}

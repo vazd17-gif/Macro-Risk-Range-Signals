@@ -33,6 +33,7 @@ import urllib.request
 
 from .signals import (ADD_LONG, ADD_SHORT, BREAKDOWN, BREAKOUT, COVER_SHORT, REMOVE_LONG,
                       TRIM_LONG, TRIM_SHORT, vol_read)
+from .signals import label as sig_label
 
 STATE = ("out", ".alerted")
 TIMEOUT = 15
@@ -272,9 +273,9 @@ def events(df):
             why = "" if (why is None or why != why) else str(why).strip()
             out.append(Event(
                 key="%s|%s" % (tk, sig),
-                title="%s %s" % (tk, sig),
+                title="%s %s" % (tk, sig_label(sig)),
                 body=nl.join(_detail(r) + ([why] if why else [])),
-                short="%s %s at %s%s" % (tk, sig, spot, " - " + why if why else ""),
+                short="%s %s at %s%s" % (tk, sig_label(sig), spot, " - " + why if why else ""),
                 urgent=sig in (REMOVE_LONG, TRIM_LONG, COVER_SHORT),
                 tag=TAGS.get(sig, "")))
     return out
