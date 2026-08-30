@@ -278,6 +278,11 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         # earlier close. Without them it only knows about lines crossed since the
         # open, and a name that broke two days ago and has since drifted to the low
         # end reads as a fresh WATCHLIST instead of the exit it still is.
+        # Sessions since each line last flipped. 0 means it flipped on this bar,
+        # which is what separates "has just broken" from "broke and is still within
+        # the freshness window" -- the difference between one alert and three.
+        "trade_flip_days": d_trade,
+        "trend_flip_days": d_trend,
         "broke_trend": bool(broke_trend),
         "broke_trade": bool(broke_trade),
         "recl_trend": bool(recl_trend),

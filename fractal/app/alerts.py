@@ -65,7 +65,7 @@ TAGS = {
     "mixed":      "orange_circle",
 }
 
-Event = collections.namedtuple("Event", "key title body short urgent tag")
+Event = collections.namedtuple("Event", "key title body short urgent tag index")
 
 
 # --------------------------------------------------------------------- backends
@@ -242,6 +242,20 @@ def events(df):
         # signal -- but a regime shift in it frames every other name on the page,
         # which is the whole reason it is worth waking a phone for.
         if getattr(r, "is_index", False):
+            # A volatility index never carries a position, so it never produces a
+            # signal -- but it does cross lines, and a vol regime change frames
+            # every other name on the page. Intraday the crossing comes from the
+            # re-pricer; on a daily run it has to be read off the flip age, and only
+            # a flip on THIS bar counts. The break flags stay true for three
+            # sessions, which would otherwise announce the same break three times.
+            if not cross:
+                flips = []
+                for name, key in (("TREND", "trend"), ("TRADE", "trade")):
+                    if _num(getattr(r, key + "_flip_days", None)) == 0:
+                        bull = _bull(getattr(r, key + "_bull", None))
+                        if bull is not None:
+                            flips.append(("reclaimed " if bull else "lost ") + name)
+                cross = " and ".join(flips)
             label, stance = vol_read(cross=cross,
                                      at_low=bool(getattr(r, "at_low", False)),
                                      at_high=bool(getattr(r, "at_high", False)))
@@ -255,7 +269,8 @@ def events(df):
                     body=nl.join(_detail(r) + ([note] if note else [])),
                     short="%s %s at %s" % (tk, label, spot),
                     urgent=bool(cross),
-                    tag=TAGS.get(stance, "")))
+                    tag=TAGS.get(stance, ""),
+                    index=True))
             continue
         if cross:
             out.append(Event(
@@ -264,7 +279,8 @@ def events(df):
                 body=nl.join(_detail(r)),
                 short="%s %s at %s" % (tk, cross, spot),
                 urgent=True,
-                tag=TAGS.get(cross.split(" ")[0], "")))
+                tag=TAGS.get(cross.split(" ")[0], ""),
+                index=False))
             continue
 
         sig = getattr(r, "signal", None)
@@ -277,7 +293,8 @@ def events(df):
                 body=nl.join(_detail(r) + ([why] if why else [])),
                 short="%s %s at %s%s" % (tk, sig_label(sig), spot, " - " + why if why else ""),
                 urgent=sig in (REMOVE_LONG, TRIM_LONG, COVER_SHORT),
-                tag=TAGS.get(sig, "")))
+                tag=TAGS.get(sig, ""),
+                index=False))
     return out
 
 
@@ -321,13 +338,27 @@ def notify(df, asof="", verbose=True, dry=False, seed=False):
     """
     nl = chr(10)
     if seed:
-        keys = {e.key for e in events(df)}
+        ev = events(df)
         asof = asof or str(df.attrs.get("asof", "")) or "?"
+        already = _load(asof)
+
+        # Volatility indices are the exception to seeding. The rest of the daily set
+        # is what the noon newsletter is for, but a vol regime change is not a
+        # position to read about later -- it reframes every signal underneath it,
+        # there are only three of them so they cannot flood, and waiting until the
+        # live job starts at 14:30 would hold it back for two and a half hours.
+        vol = [e for e in ev if e.index and e.key not in already]
+        for e in vol:
+            if not dry and configured():
+                send(e.title, e.body, e.urgent, e.tag)
+            if verbose:
+                print("  push: %s [%s]" % (e.title, e.tag))
         if not dry:
-            _save(asof, keys)
+            _save(asof, {e.key for e in ev} | already)
         if verbose:
-            print("alerts: seeded %d daily signals (intraday changes will push)" % len(keys))
-        return 0
+            print("alerts: seeded %d daily signals, pushed %d volatility event(s)"
+                  % (len(ev) - len(vol), len(vol)))
+        return len(vol)
 
     if not configured():
         if verbose:
