@@ -552,7 +552,7 @@ chip is a name at the bottom of its range that is below TREND &mdash; the one ca
 handbook says not to buy. VIX and MOVE are the exception: they carry no position, so
 they are coloured by what they mean for everything else &mdash; green when volatility
 is falling, red when it is rising.
-&ldquo;In range&rdquo; shows where spot sits between the low and high edge.
+&ldquo;In range&rdquo; shows where spot sits between the low and high edge; the outer fifth at each end counts as &ldquo;at the end&rdquo;.
 Volume is shown as a z-score of log volume against the fund's own 1-month and
 3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue
 an unusually light one (z &le; &minus;2).
@@ -863,7 +863,7 @@ def main():
     ap.add_argument("--profile", default="hedgeye_anchor",
                     help="range profile: hedgeye_anchor | anchor_ewma | hedgeye_vol")
     ap.add_argument("--edge", type=float, default=S.EDGE,
-                    help='fraction of the range counted as "near the end" (default 0.15)')
+                    help='fraction of the range counted as "near the end" (default 0.20)')
     ap.add_argument("--fresh-days", type=int, default=S.FRESH_DAYS)
     ap.add_argument("--outdir", default=repo_path("out"))
     ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")

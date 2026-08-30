@@ -35,7 +35,10 @@ from ..data.etf_universe import all_etfs, group_of, is_index, yf_symbol
 from ..model import adaptive_ma, range_ewma, state as state_mod
 from ..model.range_ewma import volume_features
 
-EDGE = 0.15          # "near or at" the end of the range: outer 15%
+# "Near or at" the end of the range: the outer fifth. Hedgeye's own ETF Pro adds
+# sat a median 0.17 into the range at the session low, so an outer-15% band was
+# tighter than the thing it is meant to reproduce and missed adds they were making.
+EDGE = 0.20
 FRESH_DAYS = 3       # a break/reclaim counts as an event for this many sessions
 MIN_RANGE_PCT = 2.0  # below this range width an ETF is cash-like: no signals
 SETTLE_MULT = 3      # an EMA needs roughly 3x its span of history to shed its seed
@@ -330,7 +333,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # A break is read at the EDGE of the range rather than only outside it. Waiting
     # for price to clear the high tick misses the move: WEAT closed 4 cents inside
     # its range high on 2 sigma of volume, which is a breakout being bought, not a
-    # name to trim into. So the same outer 15% the alert strip uses marks the zone,
+    # name to trim into. So the same outer band the alert strip uses marks the zone,
     # and volume decides whether being there means anything -- at the edge on
     # ordinary volume is drift, and mean-reverts more often than it continues.
     # TREND still sets direction: price pressing the high while TREND is bearish is

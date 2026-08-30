@@ -104,10 +104,16 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
                 pass
         lo, hi = r["range_low"], r["range_high"]
         trade, trend = r["trade"], r["trend"]
-        was_trade, was_trend = r["trade_bull"], r["trend_bull"]
+        was_trade = r["trade_bull"]
 
+        # TRADE is the only line read against live price. Hedgeye's own ETF Pro
+        # changes bear this out: nine of ten removals had the session low dip below
+        # TRADE on the day the note went out, while only one had broken on the prior
+        # close -- they act on TRADE intraday. TREND and the RANGE reads stay on the
+        # close, because a regime call and a range edge are close-to-close
+        # judgements and re-deriving them from an 11am print is noise, not news.
         now_trade = bool(spot > trade) if np.isfinite(trade) else None
-        now_trend = bool(spot > trend) if np.isfinite(trend) else None
+        now_trend = r["trend_bull"]
         pos = (spot - lo) / (hi - lo) if (np.isfinite(lo) and np.isfinite(hi) and hi > lo) else np.nan
 
         # A name resting on its line flips sides on a fraction of a cent, and the
@@ -118,16 +124,14 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         # of a percent is a long way in LQD and nothing at all in ARKQ.
         buf = S.line_band(lo, hi)
         crossed = []
-        for name, before, after, level in (("TREND", was_trend, now_trend, trend),
-                                           ("TRADE", was_trade, now_trade, trade)):
-            if before is None or after is None or bool(before) == bool(after):
-                continue
-            if np.isfinite(level) and abs(spot - level) <= buf:
-                continue                      # still on the line, not through it
-            crossed.append(("lost " if before else "reclaimed ") + name)
+        if (was_trade is not None and now_trade is not None
+                and bool(was_trade) != bool(now_trade)
+                and not (np.isfinite(trade) and abs(spot - trade) <= buf)):
+            crossed.append(("lost " if was_trade else "reclaimed ") + "TRADE")
 
-        at_low = np.isfinite(pos) and pos <= edge
-        at_high = np.isfinite(pos) and pos >= 1 - edge
+        # Carried from the close, not re-derived from live price.
+        at_low = bool(r.get("at_low"))
+        at_high = bool(r.get("at_high"))
 
         # Intraday, a "break" is a line crossed since the close rather than one
         # crossed within the last few sessions, so the crossings feed the same
@@ -136,19 +140,15 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         lost = [c for c in crossed if c.startswith("lost")]
         recl = [c for c in crossed if c.startswith("reclaimed")]
 
-        # A line broken on an earlier close is still broken now, so the daily state
-        # is carried and only overturned by an intraday move the other way.
-        def _state(name):
-            broke = bool(r.get("broke_" + name.lower())) or any(name in c for c in lost)
-            back = bool(r.get("recl_" + name.lower())) or any(name in c for c in recl)
-            if any(name in c for c in lost):
-                back = False
-            elif any(name in c for c in recl):
-                broke = False
-            return broke, back
-
-        bt, rt = _state("TREND")
-        bd, rd = _state("TRADE")
+        # TREND's state is whatever the close concluded -- nothing intraday can
+        # change it. TRADE's is the close's, overturned by a crossing since.
+        bt, rt = bool(r.get("broke_trend")), bool(r.get("recl_trend"))
+        bd = bool(r.get("broke_trade")) or bool(lost)
+        rd = bool(r.get("recl_trade")) or bool(recl)
+        if lost:
+            rd = False
+        elif recl:
+            bd = False
         sig, why = S.decide(
             bool(r.get("is_index")), bool(r.get("cash_like")),
             100 * (hi / lo - 1) if (np.isfinite(lo) and np.isfinite(hi) and lo > 0) else 0.0,
