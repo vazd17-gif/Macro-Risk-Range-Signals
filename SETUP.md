@@ -122,3 +122,58 @@ Two habits worth keeping. Re-run `python -m fractal.calib.validate_hedgeye`
 whenever new Hedgeye levels arrive by email — it is the only check that the
 reconstruction still tracks. And commit after re-fitting parameters, so a fit that
 turns out worse can be reverted rather than argued about.
+
+---
+
+## Phone app and alerts
+
+The dashboard installs to a phone home screen, and alerts are pushed by the same
+scheduled job that re-prices it.
+
+### Install the app
+
+Open the site on the phone and use the browser menu:
+
+- **iPhone** (Safari) — Share → **Add to Home Screen**
+- **Android** (Chrome) — ⋮ → **Install app**
+
+It gets its own icon and opens without browser chrome. The page reloads itself
+every five minutes, so an open app stays current.
+
+Push notifications do **not** come from the installed page. That would need a
+server holding a subscription for each device, and GitHub Pages only serves static
+files. Alerts go over ntfy instead — see below.
+
+### Turn on alerts
+
+```bash
+python -m fractal.app.alerts --setup
+```
+
+That prints a private topic and the two `setx` commands to run. Install the
+**ntfy** app (App Store / Play Store), subscribe to that topic, then:
+
+```bash
+python -m fractal.app.alerts --test
+```
+
+Pushover works too, if preferred: set `FRACTAL_PUSHOVER_TOKEN` and
+`FRACTAL_PUSHOVER_USER` and it is used alongside or instead of ntfy.
+
+### What fires, and what does not
+
+| Event | Pushed? |
+|---|---|
+| TRADE or TREND crossed during the session | yes, high priority |
+| A new ADD LONG / ADD SHORT / REMOVE LONG / COVER SHORT | yes |
+| The daily signal set at noon | no — that is the newsletter |
+| The same event, on the next ten-minute pass | no |
+| Volatility indices, cash-like names | never |
+
+The noon job **seeds** the day's signals as already-known instead of sending them;
+pushing forty at once would just be a second copy of the email. Sent keys live in
+`fractal/out/.alerted` and clear when the session date changes, so each distinct
+event buzzes once. More than four new at once arrive as one digest.
+
+> The ntfy topic name is the only thing protecting the channel — anyone who knows
+> it can read your alerts. Keep it out of screenshots and shared repos.
