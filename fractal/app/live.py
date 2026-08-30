@@ -86,6 +86,10 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         px, times = quotes(df["ticker"].tolist(), with_times=True)
     times = times or {}
     asof = str(df["asof"].max()) if "asof" in df else ""
+    # The bands the daily run chose from the VIX. Carried, not re-derived: the
+    # volatility regime is a close-to-close judgement like TREND.
+    edge_buy = df.attrs.get("edge_buy") or S.EDGE_BUY
+    edge_sell = df.attrs.get("edge_sell") or S.EDGE_SELL
     out = df.copy()
     out["close_spot"] = out["spot"]
     out["intraday"] = ""
@@ -140,10 +144,15 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
             if touched:
                 crossed.append(("lost " if was_trade else "reclaimed ") + "TRADE")
 
-        # Carried from the close, not re-derived from live price. All four are
-        # needed because the buy and sell bands differ with the volatility regime.
-        buy_low, sell_low = bool(r.get("buy_low")), bool(r.get("sell_low"))
-        buy_high, sell_high = bool(r.get("buy_high")), bool(r.get("sell_high"))
+        # Read against live price, because Hedgeye adds on where price is now, not
+        # where it closed. Their three adds on 2026-08-28 all sat mid-range on the
+        # prior close -- 0.51 to 0.67 -- and only reached the buy zone during the
+        # session, at 0.20 to 0.40. A model that froze the range read at the close
+        # could not see any of them arrive.
+        #
+        # The RANGE itself is still fixed by the close; what moves is where price
+        # sits inside it. TREND stays a close-to-close judgement.
+        buy_low, sell_low, buy_high, sell_high = S.range_flags(pos, edge_buy, edge_sell)
         at_low, at_high = buy_low, sell_high
 
         # Intraday, a "break" is a line crossed since the close rather than one
