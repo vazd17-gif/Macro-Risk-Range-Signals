@@ -182,13 +182,16 @@ h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
 padding:10px 15px;min-width:132px;border-left:3px solid var(--line)}
 .card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .card .v{font-size:20px;font-weight:650;margin-top:2px}
-.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+.filters{display:flex;flex-direction:column;gap:9px;margin-bottom:16px}
+.frow{display:grid;grid-template-columns:66px 1fr;gap:9px;align-items:start}
+.flab{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+padding-top:7px}
+.fbtns{display:flex;flex-wrap:wrap;gap:8px}
+@media(max-width:640px){.frow{grid-template-columns:1fr;gap:4px}.flab{padding-top:0}}
 button{background:var(--panel);color:var(--fg);border:1px solid var(--line);
 border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer}
 button:hover{border-color:#39414f}
 button[aria-pressed="true"]{background:#1d2530;border-color:#3d4a5c;color:#fff}
-input[type=search]{background:var(--panel);border:1px solid var(--line);border-radius:8px;
-color:var(--fg);padding:6px 11px;font-size:12.5px;min-width:150px}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 table{border-collapse:collapse;width:100%;min-width:1180px}
 th,td{padding:7px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
@@ -235,17 +238,15 @@ const c=(!isNaN(nx)&&!isNaN(ny))?nx-ny:String(x).localeCompare(String(y));return
 function apply(){const f=document.querySelector('button[data-sig][aria-pressed="true"]');
 const g=document.querySelector('button[data-grp][aria-pressed="true"]');
 const v=document.querySelector('button[data-vol][aria-pressed="true"]');
-const q=(document.getElementById('q').value||'').toUpperCase();
 rows.forEach(r=>{const okS=!f||r.dataset.sig===f.dataset.sig;
-const okG=!g||r.dataset.grp===g.dataset.grp;const okQ=!q||r.dataset.tk.includes(q);
+const okG=!g||r.dataset.grp===g.dataset.grp;
 const okV=!v||r.dataset.vol===v.dataset.vol;
-r.style.display=(okS&&okG&&okQ&&okV)?'':'none';});}
+r.style.display=(okS&&okG&&okV)?'':'none';});}
 document.querySelectorAll('button[data-sig],button[data-grp],button[data-vol]').forEach(b=>{b.onclick=()=>{
 const on=b.getAttribute('aria-pressed')==='true';
 const attr=b.dataset.sig!==undefined?'data-sig':(b.dataset.grp!==undefined?'data-grp':'data-vol');
 document.querySelectorAll('button['+attr+']').forEach(o=>o.setAttribute('aria-pressed','false'));
 b.setAttribute('aria-pressed',on?'false':'true');apply();};});
-document.getElementById('q').addEventListener('input',apply);
 """
 
 
@@ -262,7 +263,7 @@ def render_dashboard(df, params, generated=None, book=None):
         pill = ('<span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span>'
                 % (colour, colour, colour, html.escape(sig))) if sig else ""
         body.append(
-            '<tr id="%s" data-sig="%s" data-grp="%s" data-tk="%s" data-vol="%s">'
+            '<tr id="%s" data-sig="%s" data-grp="%s" data-vol="%s">'
             '<td class="l"><span class="tk" style="color:%s">%s</span> <span class="grp">%s</span></td>'
             '<td data-v="%s">%s</td>'
             '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
@@ -272,7 +273,7 @@ def render_dashboard(df, params, generated=None, book=None):
             '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
             '<td class="opt" data-v="%s">%s</td>'
             '<td class="l">%s</td><td class="l opt why">%s</td></tr>'
-            % (r.ticker, html.escape(sig), r.group, r.ticker, r.vol_flag or "",
+            % (r.ticker, html.escape(sig), r.group, r.vol_flag or "",
                ("#0ea37f" if r.trend_bull else "#ef5350" if r.trend_bull is False else "#8b94a5"),
                r.ticker, GROUP_LABEL.get(r.group, r.group),
                r.spot, _f(r.spot), r.range_low, _f(r.range_low), r.range_high, _f(r.range_high),
@@ -426,11 +427,12 @@ def render_dashboard(df, params, generated=None, book=None):
 %s
 %s
 %s
-<div class="controls">
-%s<span style="width:8px"></span>%s<span style="width:8px"></span>
-<button data-vol="surge" aria-pressed="false">Volume surge</button>
-<button data-vol="dry" aria-pressed="false">Volume dry</button>
-<input id="q" type="search" placeholder="filter ticker&hellip;">
+<div class="filters">
+<div class="frow"><span class="flab">Action</span><div class="fbtns">%s</div></div>
+<div class="frow"><span class="flab">Volume</span><div class="fbtns">
+<button data-vol="surge" aria-pressed="false">Surge</button>
+<button data-vol="dry" aria-pressed="false">Dry</button></div></div>
+<div class="frow"><span class="flab">Category</span><div class="fbtns">%s</div></div>
 </div>
 <div class="tablewrap"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>
 <footer>
