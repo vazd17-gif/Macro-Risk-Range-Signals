@@ -25,9 +25,9 @@ GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
 ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE, KSA,
 KWEB, KWT, LIT, LQD, MAGS, MTBA, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
 PPLT, PSP, PSCU, PSCC, PSCD, PSCH, QQQ, QTUM, RSP, SCJ, SHY, SIL, SILJ,
-SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, TBIL, TAN, TLT, TUR, UAE,
+SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, SRUUF, TBIL, TAN, TLT, TUR, UAE,
 UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF, XLI, XLK, XLP, XLU,
-XLE, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
+XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 """
 
 # Single names: the highest daily dollar-volume S&P 500 constituents, plus any
@@ -68,7 +68,7 @@ GROUPS = {
                      "XTL", "XHE", "XOP", "ITA", "ITB", "IAK", "IHF", "PJP", "KRE",
                      "JETS", "OIH", "PSP", "DESK", "FUTY"],
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],
-    "thematic":     ["ARKG", "ARKK", "ARKQ", "CIBR", "SKYY", "QTUM", "DRAM",
+    "thematic":     ["ARKG", "ARKK", "ARKQ", "CIBR", "SKYY", "QTUM", "DRAM", "XBI",
                      "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV",
                      "AQWA", "PBD", "PINK", "WOOD", "SLX", "GII"],
     "intl":         ["EEM", "EMXC", "KEMX", "EWA", "EWC", "EWG", "EWH", "EWI", "EWJ", "EWJV",
@@ -77,7 +77,7 @@ GROUPS = {
                      "COLO", "GLIN", "INDA", "INDY", "SMIN", "IDX", "JPXN", "SCJ",
                      "KSA", "KWT", "TUR", "UAE", "FXI", "KWEB"],
     "commodity":    ["GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "DUST",
-                     "PALL", "PPLT", "CPER", "COPX", "DBC", "USO", "BNO", "UGA",
+                     "PALL", "PPLT", "CPER", "COPX", "SRUUF", "DBC", "USO", "BNO", "UGA",
                      "UNG", "FCG", "CORN", "WEAT", "SOYB", "CANE", "BDRY", "BWET"],
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
