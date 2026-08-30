@@ -313,17 +313,22 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         held = " and has stayed below" if was_below else " - watch whether it holds"
         return BREAKDOWN, "broke down below the RANGE low on heavy volume%s" % held
 
-    # A break that closed back inside the range failed. That is worth saying rather
-    # than silently re-reading the name as an ordinary edge signal, because the
-    # failure is information about the attempt.
     # Outside the range without the volume to back it. Not a breakout, but not
     # nothing either -- it is the name to watch for confirmation tomorrow.
-    if outside_high and trend_bull:
+    if outside_high and trend_bull and not was_above:
         return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
+    if outside_low and trend_bull is False and not was_below:
+        return WATCHLIST, "below the RANGE low but not on volume - watch for confirmation"
+
+    # A break that closed back inside the range failed, and the add taken on it comes
+    # off. This is a trim rather than an exit: what is cut is the breakout tranche,
+    # not the core position, which TREND still governs. With no position sizing in
+    # the book a trim is a full exit in practice, which is the conservative direction
+    # to be wrong in.
     if was_above and not outside_high:
-        return WATCHLIST, "broke out above the RANGE but failed to hold - no action yet"
+        return TRIM_LONG, "broke out above the RANGE but failed to hold - cut the breakout add"
     if was_below and not outside_low:
-        return WATCHLIST, "broke down below the RANGE but failed to hold - no action yet"
+        return TRIM_SHORT, "broke down below the RANGE but failed to hold - cover the breakdown add"
 
     if at_low and trade_bull is False and trend_bull is False:
         return WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
