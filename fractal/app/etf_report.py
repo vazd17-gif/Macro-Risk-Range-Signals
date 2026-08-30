@@ -760,9 +760,13 @@ def main():
     if args.live:
         from . import live as LIVE
         df = LIVE.reprice(df, edge=args.edge)
-        print("[live] re-priced %d of %d names at %s"
-              % (df.attrs.get("n_live", 0), len(df),
-                 df.attrs.get("live_at").strftime("%H:%M")))
+        at = df.attrs.get("live_at")
+        if at is None:
+            print("[live] no quote newer than the %s close - report left as the daily build"
+                  % df["asof"].max())
+        else:
+            print("[live] re-priced %d of %d names at %s"
+                  % (df.attrs.get("n_live", 0), len(df), at.strftime("%H:%M")))
 
     eff = dict(params)
     eff["range"] = dict(params["range"])

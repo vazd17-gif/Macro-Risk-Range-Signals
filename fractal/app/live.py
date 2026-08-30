@@ -25,8 +25,12 @@ from . import signals as S
 from ..data.etf_universe import yf_symbol
 
 
-def quotes(tickers, chunk=60):
+def quotes(tickers, chunk=60, with_times=False):
     """{display ticker: last price}. Missing names are simply absent, never guessed.
+
+    With `with_times`, returns ({ticker: price}, {ticker: timestamp}) instead. The
+    timestamp is what tells a genuinely live quote from the last print of a session
+    that has already closed -- see `reprice`.
 
     Quotes are requested under the feed symbol, not the display ticker. VIX and
     MOVE publish as ^VIX and ^MOVE; requesting bare "MOVE" silently returns an
@@ -36,7 +40,7 @@ def quotes(tickers, chunk=60):
     warnings.filterwarnings("ignore")
     import yfinance as yf
 
-    out = {}
+    out, when = {}, {}
     tickers = list(tickers)
     feed = {t: yf_symbol(t) for t in tickers}
     for i in range(0, len(tickers), chunk):
@@ -54,21 +58,34 @@ def quotes(tickers, chunk=60):
                 c = sub["Close"].dropna()
                 if len(c):
                     out[t] = float(c.iloc[-1])
+                    when[t] = c.index[-1]
             except Exception:
                 pass
-    return out
+    return (out, when) if with_times else out
 
 
-def reprice(df, px=None, edge=S.EDGE):
+def reprice(df, px=None, edge=S.EDGE, times=None):
     """Return a copy of the signal frame re-priced to live quotes.
 
     Levels are untouched. Spot, range position, the bull/bear reads, the state and
     the signal are recomputed, and anything that crossed a line since the close is
     flagged.
+
+    A crossing is only claimed when the quote comes from a session *after* the one
+    the levels were built on. Outside market hours the feed keeps returning the last
+    continuous print of the previous session, and that print is not the official
+    close -- the closing auction sets the close, and the two differ. Comparing a
+    15:59 print against flags derived from the 16:00 auction invents crossings that
+    never happened: IWC printed 194.75 at 15:59 on 2026-08-28 and closed at 195.03,
+    on opposite sides of a TRADE line at 194.95. Spot still updates; only the claim
+    that something crossed is withheld.
     """
     if df.empty:
         return df
-    px = px if px is not None else quotes(df["ticker"].tolist())
+    if px is None:
+        px, times = quotes(df["ticker"].tolist(), with_times=True)
+    times = times or {}
+    asof = str(df["asof"].max()) if "asof" in df else ""
     out = df.copy()
     out["close_spot"] = out["spot"]
     out["intraday"] = ""
@@ -78,6 +95,13 @@ def reprice(df, px=None, edge=S.EDGE):
         spot = px.get(r["ticker"])
         if spot is None or not np.isfinite(spot) or spot <= 0:
             continue
+        ts = times.get(r["ticker"])
+        if ts is not None and asof:
+            try:
+                if not str(pd.Timestamp(ts).date()) > asof:
+                    continue          # quote predates the close the levels came from
+            except Exception:
+                pass
         lo, hi = r["range_low"], r["range_high"]
         trade, trend = r["trade"], r["trend"]
         was_trade, was_trend = r["trade_bull"], r["trend_bull"]
@@ -153,6 +177,10 @@ def reprice(df, px=None, edge=S.EDGE):
     out["_x"] = (~out["intraday"].astype(bool)).astype(int)   # today's crossings first
     out = (out.sort_values(["_x", "_r", "pos_in_range", "ticker"])
               .drop(columns=["_x", "_r"]).reset_index(drop=True))
-    out.attrs["live_at"] = dt.datetime.now()
-    out.attrs["n_live"] = int(out["live"].sum())
+    # With every quote stale the frame is just the daily build, so it is not
+    # labelled live -- a "live" stamp over yesterday's closes is a lie.
+    n_live = int(out["live"].sum())
+    if n_live:
+        out.attrs["live_at"] = dt.datetime.now()
+    out.attrs["n_live"] = n_live
     return out
