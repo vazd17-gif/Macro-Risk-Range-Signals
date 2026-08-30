@@ -60,8 +60,8 @@ def main():
                 fh.write(etf_report.render_newsletter(etf, eff, book=book))
             etf.to_csv(os.path.join(args.outdir, "etf_signals_%s.csv" % stamp), index=False)
             if not book.empty:
-                print("book:  %d open | since entry %+.2f%% | since the baseline close %+.2f%%"
-                      % (len(book), book["pnl_pct"].mean(), book["since_close_pct"].mean()))
+                print("book:  %d open | since entry %+.2f%% | today %+.2f%%"
+                      % (len(book), book["pnl_pct"].mean(), book["day_pct"].mean()))
             c = etf["signal"].value_counts().to_dict()
             print("macro: %d names | %s" % (len(etf), "  ".join(
                 "%s=%d" % (k, c.get(k, 0)) for k in

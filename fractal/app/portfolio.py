@@ -8,9 +8,8 @@ the RANGE is a buy only if you do not.
 The baseline is **the last completed session** -- Friday's close on a weekend run.
 Every level in the report comes off that bar, so the book uses the same starting
 point: a position added without an explicit price is booked at that close, on that
-date. Performance is then measured two ways -- from the entry price to the current
-spot, and from the baseline close to the current spot -- so a position opened at
-the baseline and one opened weeks ago are both measured against the same "now".
+date. Performance is measured two ways -- since the position was opened, and over
+the current session -- which are the two a reader actually acts on.
 
 Positions live in `data/portfolio.csv`, one row per lot:
 
@@ -268,9 +267,9 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
     """Open positions joined to today's signals, with P&L and an action.
 
     `spot` is the current price: the live quote when `live` is set and the market
-    is open, otherwise the baseline close. `pnl_pct` runs from the entry price;
-    `since_close_pct` runs from the baseline close, so positions opened at different times
-    are still comparable against the same baseline.
+    is open, otherwise the baseline close. `pnl_pct` runs from the entry price and
+    `day_pct` is the position's move over the current session -- both signed by
+    side, so a short that falls shows a gain.
     """
     pos = open_positions(custom)
     if pos.empty:
@@ -284,8 +283,8 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         if p.ticker not in s.index:
             rows.append({"ticker": p.ticker, "side": p.side, "entry_date": p.entry_date,
                          "entry_price": float(p.entry_price), "shares": p.shares,
-                         "base_close": np.nan, "spot": np.nan, "pnl_pct": np.nan,
-                         "since_close_pct": np.nan, "days_held": np.nan,
+                         "spot": np.nan, "pnl_pct": np.nan,
+                         "day_pct": np.nan, "days_held": np.nan,
                          "range_low": np.nan, "range_high": np.nan, "pos_in_range": np.nan,
                          "trade": np.nan, "trend": np.nan, "trade_bull": None,
                          "trend_bull": None, "signal": None, "action": A_HOLD,
@@ -298,7 +297,7 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         entry = float(p.entry_price)
         sign = 1.0 if p.side == LONG else -1.0
         pnl = sign * (spot / entry - 1.0)
-        since_base = sign * (spot / base - 1.0)
+        day = sign * float(r.get("day_pct", np.nan) or np.nan)
         act, why = _action(p.side, r["signal"], bool(r["at_low"]),
                            bool(r["at_high"]), str(r.get("event") or ""))
         try:
@@ -307,8 +306,8 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
             held = np.nan
         rows.append({
             "ticker": p.ticker, "side": p.side, "entry_date": p.entry_date,
-            "entry_price": entry, "shares": p.shares, "base_close": base, "spot": spot,
-            "pnl_pct": 100 * pnl, "since_close_pct": 100 * since_base, "days_held": held,
+            "entry_price": entry, "shares": p.shares, "spot": spot,
+            "pnl_pct": 100 * pnl, "day_pct": day, "days_held": held,
             "range_low": float(r["range_low"]), "range_high": float(r["range_high"]),
             "pos_in_range": float(r["pos_in_range"]),
             "trade": float(r["trade"]), "trend": float(r["trend"]),
@@ -379,12 +378,12 @@ def main():
         print("no open positions. add one with:\n"
               "  python -m fractal.app.portfolio add GLD long")
         return 0
-    cols = ["ticker", "side", "entry_date", "entry_price", "base_close", "spot",
-            "pnl_pct", "since_close_pct", "days_held", "action", "action_why"]
+    cols = ["ticker", "side", "entry_date", "entry_price", "spot",
+            "pnl_pct", "day_pct", "days_held", "action", "action_why"]
     print("baseline: %s close\n" % sig["asof"].max())
     print(rec[cols].to_string(index=False, float_format=lambda v: "%.2f" % v))
     print("\n%d open | since entry %+.2f%% | since the baseline close %+.2f%% | %s"
-          % (len(rec), rec["pnl_pct"].mean(), rec["since_close_pct"].mean(),
+          % (len(rec), rec["pnl_pct"].mean(), rec["day_pct"].mean(),
              "  ".join("%s=%d" % kv for kv in rec["action"].value_counts().items())))
     return 0
 

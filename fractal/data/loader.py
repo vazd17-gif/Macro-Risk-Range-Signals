@@ -44,3 +44,24 @@ def load_prices(tickers, params: dict | None = None, source: str | None = None,
                 print(f"[loader] IB unavailable ({e}); falling back to Yahoo.")
 
     return yahoo_client.fetch(tickers, years=years, cache_dir=cache_dir)
+
+def next_session(asof):
+    """The trading day that levels computed from the `asof` close apply to.
+
+    A close fixes the levels and the levels govern the session that follows, so the
+    report is dated by that session rather than by the bar it came from: a Monday
+    newsletter carries Monday's levels, computed off Friday's close.
+
+    Weekends are skipped; exchange holidays are not modelled, so a holiday Monday
+    would still be dated to that Monday rather than rolled to Tuesday.
+    """
+    import datetime as _dt
+    import pandas as _pd
+    try:
+        d = _pd.Timestamp(asof).date()
+    except Exception:
+        return None
+    d += _dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d += _dt.timedelta(days=1)
+    return d

@@ -127,6 +127,12 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     at_low = pos <= edge
     at_high = pos >= 1 - edge
 
+    # The bar's own move, close to close. Carried so the book can show a daily P&L
+    # without re-reading prices, and so the live re-pricer has something to
+    # overwrite rather than a column that only exists intraday.
+    day_pct = (100 * (spot / float(close.iloc[-2]) - 1)
+               if len(close) > 1 and float(close.iloc[-2]) else np.nan)
+
     # Whether the previous close was already at an edge, measured against that
     # session's own range rather than today's -- the envelope moves, so comparing
     # yesterday's close to today's low would report breaks that never happened.
@@ -267,6 +273,7 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         "young": bool(young),
         "at_low": bool(at_low),
         "at_high": bool(at_high),
+        "day_pct": day_pct,
         # Carried so the intraday re-pricer can see a break that happened on an
         # earlier close. Without them it only knows about lines crossed since the
         # open, and a name that broke two days ago and has since drifted to the low
@@ -349,14 +356,15 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     if was_below and not at_low and trend_bull is False:
         return TRIM_SHORT, "broke down but failed to hold the RANGE low - cover the breakdown add"
 
-    if at_low and trade_bull is False and trend_bull is False:
-        return WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
-    if at_low and trade_bull is False and trend_bull:
+    # A long is never opened against a bearish TREND. TREND decides whether you hold
+    # at all, so price being cheap inside a downtrend is not a buy -- it is the same
+    # mistake as reading a spike above the range as a breakout when TREND disagrees.
+    # Those names fall through to the short-side branches below, where a reclaim can
+    # still produce a cover or a partial cover, and otherwise end up on the watch.
+    if at_low and trend_bull and trade_bull:
+        return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
+    if at_low and trend_bull:
         return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    if at_low and (trade_bull or trend_bull):
-        both = ("TRADE and TREND" if (trade_bull and trend_bull)
-                else ("TRADE" if trade_bull else "TREND"))
-        return ADD_LONG, "low end of RANGE, bullish %s" % both
     if at_high and (trade_bull is False or trend_bull is False):
         both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
                 else ("TRADE" if trade_bull is False else "TREND"))
@@ -369,6 +377,11 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return TRIM_SHORT, event + " with TREND still bearish - buy back some"
     if recl_trade:
         return COVER_SHORT, event + " - close the short"
+
+    # Cheap, but inside a downtrend and with nothing reclaimed. Worth watching, not
+    # worth owning.
+    if at_low and trend_bull is False:
+        return WATCHLIST, "at the low end but TREND is bearish - not a buy"
     return None, ""
 
 

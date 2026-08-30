@@ -19,7 +19,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from ..data.loader import load_params, repo_path
+from ..data.loader import load_params, next_session, repo_path
 from . import signals as S
 from . import portfolio as P
 from ..data.etf_names import short_names
@@ -181,12 +181,15 @@ def _index_rows(idx):
     return out
 
 
-def _weekday_label(datestr):
-    """Short weekday name of the baseline bar, e.g. Friday -> 'Fri'."""
-    try:
-        return pd.Timestamp(datestr).strftime("%a")
-    except Exception:
-        return "last"
+def _session_label(asof):
+    """The trading day these levels are for, spelled out.
+
+    The report is dated by the session it governs rather than by the bar it was
+    built from, and rather than by when the job happened to run -- a Sunday
+    regeneration still carries Monday's levels.
+    """
+    d = next_session(asof)
+    return d.strftime("%A, %d %B %Y").replace(" 0", " ") if d else str(asof)
 
 
 REFRESH_SECONDS = 300      # the live page reloads itself every 5 minutes
@@ -386,8 +389,6 @@ def render_dashboard(df, params, generated=None, book=None):
     for name in SIGNAL_ORDER:
         cards.append((name, counts.get(name, 0), SIG_STYLE[name][0]))
 
-    base_lbl = _weekday_label(asof)
-
     # The alert strip carries the two things that are only true right now: a line
     # crossed during this session, and price sitting at an edge of today's range.
     # Both are transient -- by tonight's close the crossing is just history and the
@@ -475,14 +476,14 @@ def render_dashboard(df, params, generated=None, book=None):
         for b in book.itertuples():
             ac = P.ACTION_COLOUR.get(b.action, "#8b94a5")
             pc = "#0ea37f" if b.pnl_pct >= 0 else "#ef5350"
-            tc = "#0ea37f" if b.since_close_pct >= 0 else "#ef5350"
+            tc = "#0ea37f" if (b.day_pct or 0) >= 0 else "#ef5350"
             sidec = "#0ea37f" if b.side == "long" else "#ef5350"
             days = ("%d" % b.days_held) if np.isfinite(b.days_held) else "&ndash;"
             prow.append(
                 '<tr><td class="l"><span class="tk">%s</span></td>'
                 '<td class="l" style="color:%s;text-transform:uppercase;font-size:11.5px;font-weight:650">%s</td>'
                 '<td class="l" style="color:var(--dim)">%s</td>'
-                '<td data-v="%s">%s</td><td data-v="%s">%s</td>'
+                '<td data-v="%s">%s</td>'
                 '<td data-v="%s" style="font-weight:650">%s</td>'
                 '<td data-v="%.4f" style="color:%s;font-weight:650">%+.2f%%</td>'
                 '<td data-v="%.4f" style="color:%s">%+.2f%%</td>'
@@ -491,22 +492,21 @@ def render_dashboard(df, params, generated=None, book=None):
                 '<td class="l why">%s</td></tr>'
                 % (b.ticker, sidec, b.side, b.entry_date,
                    b.entry_price, _f(b.entry_price),
-                   b.base_close, _f(b.base_close),
                    b.spot, _f(b.spot),
                    b.pnl_pct, pc, b.pnl_pct,
-                   b.since_close_pct, tc, b.since_close_pct,
+                   b.day_pct, tc, b.day_pct,
                    days,
                    ac, ac, ac, html.escape(b.action), html.escape(b.action_why or "")))
         pf_html = (
             '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Portfolio '
             '<span style="color:var(--dim);font-weight:400;font-size:13px">'
-            '&middot; %d open &middot; since entry %+.2f%% &middot; since %s %+.2f%%</span></h2>'
+            '&middot; %d open &middot; since entry %+.2f%% &middot; today %+.2f%%</span></h2>'
             '<div class="tablewrap" style="margin-bottom:24px"><table style="min-width:1000px">'
             '<thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>'
-            % (len(book), book["pnl_pct"].mean(), base_lbl, book["since_close_pct"].mean(),
+            % (len(book), book["pnl_pct"].mean(), book["day_pct"].mean(),
                "".join("<th>%s</th>" % h for h in
-                       ["Position", "Side", "Added", "Entry", "%s close" % base_lbl,
-                        "Spot", "P&L", "Since %s" % base_lbl, "Days", "Action", "Why"]),
+                       ["Position", "Side", "Added", "Entry",
+                        "Spot", "P&L", "Today", "Days", "Action", "Why"]),
                "".join(prow)))
 
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
@@ -531,7 +531,7 @@ def render_dashboard(df, params, generated=None, book=None):
 <style>%s</style>
 <div class="wrap">
 <h1>Macro Risk Range Signals</h1>
-<div class="sub">%s &middot; levels for the next session, computed from the bar closing %s
+<div class="sub">%s &middot; %s &middot; levels for this session, computed from the %s close
 &middot; %s</div>
 <div class="cards">%s</div>
 %s
@@ -558,7 +558,7 @@ Volume is shown as a z-score of log volume against the fund's own 1-month and
 an unusually light one (z &le; &minus;2).
 </footer></div>
 <script>%s</script>
-""" % (refresh, CSS, _universe_label(df), asof, stamp,
+""" % (refresh, CSS, _session_label(asof), _universe_label(df), asof, stamp,
        "".join('<div class="card" style="border-left-color:%s"><div class="k">%s</div>'
                '<div class="v">%s</div></div>' % (c, k, v) for k, v, c in cards),
        alerts_html,
@@ -671,7 +671,6 @@ def render_newsletter(df, params, generated=None, book=None):
     asof = df["asof"].max() if len(df) else "-"
     b = S.buckets(df)
 
-    base_lbl = _weekday_label(asof)
     names = short_names()
     pf = ""
     if book is not None and not book.empty:
@@ -687,7 +686,7 @@ def render_newsletter(df, params, generated=None, book=None):
                 '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">'
                 'entry <b>%s</b> &rarr; spot <b>%s</b>'
                 '<span style="color:#8b94a5"> &middot; %s day%s held &middot; '
-                'since %s %+.2f%%</span></div>'
+                'today %+.2f%%</span></div>'
                 '<div style="margin-top:4px"><span style="background:%s;color:#fff;font-size:11px;'
                 'font-weight:700;padding:2px 7px;border-radius:3px">%s</span>'
                 '<span style="color:#5a6270;font-size:12.5px"> &nbsp;%s</span></div></td></tr>'
@@ -698,7 +697,7 @@ def render_newsletter(df, params, generated=None, book=None):
                    _f(pos.entry_price), _f(pos.spot),
                    ("%d" % pos.days_held) if np.isfinite(pos.days_held) else "&ndash;",
                    "" if pos.days_held == 1 else "s",
-                   base_lbl, pos.since_close_pct,
+                   pos.day_pct,
                    ac, html.escape(pos.action), html.escape(pos.action_why or "holding")))
         pf = ('<tr><td style="padding:20px 0 6px">'
               '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
@@ -836,7 +835,7 @@ border:1px solid #e0e3e8;border-radius:10px;padding:26px 30px">
 <tr><td style="padding-bottom:4px">
 <div style="font-size:21px;font-weight:750;color:#111;letter-spacing:-.2px">Macro Risk Range Signals</div>
 <div style="color:#8b94a5;font-size:13px;margin-top:3px">%s &middot; %s &middot;
-levels for the next session off the %s close</div>
+levels for this session, off the %s close</div>
 </td></tr>
 <tr><td style="padding:12px 0 2px">%s</td></tr>
 %s
@@ -852,7 +851,7 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 </td></tr>
 <tr><td><table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px">%s</table></td></tr>
 </table></td></tr></table></div>
-""" % (generated.strftime("%A, %B %d, %Y"), _universe_label(df), asof, chips,
+""" % (_session_label(asof), _universe_label(df), asof, chips,
        _explainer(), pf, sections,
        "".join(app))
 
@@ -918,7 +917,7 @@ def main():
 
     if not book.empty:
         print("portfolio: %d open | since entry %+.2f%% | since the baseline close %+.2f%% | %s"
-              % (len(book), book["pnl_pct"].mean(), book["since_close_pct"].mean(),
+              % (len(book), book["pnl_pct"].mean(), book["day_pct"].mean(),
                  "  ".join("%s=%d" % kv for kv in book["action"].value_counts().items())))
     counts = df["signal"].map(S.LABEL).value_counts().to_dict()
     print("%s | %s" % (_universe_label(df), "  ".join(

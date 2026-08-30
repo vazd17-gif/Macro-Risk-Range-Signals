@@ -29,7 +29,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
-from ..data.loader import repo_path
+from ..data.loader import next_session, repo_path
 
 STATE = "out/.last_sent"
 SMTP_HOST, SMTP_PORT = "smtp.gmail.com", 465
@@ -80,12 +80,17 @@ def build_message(to_addrs, subject=None, html_path=None, sender=None):
     asof = report_asof() or dt.date.today().isoformat()
 
     msg = EmailMessage()
-    msg["Subject"] = subject or ("Macro Risk Range Signals - %s" % _pretty_date(asof))
+    # Dated by the session the levels are for, not by the close they came from: a
+    # Monday newsletter carries Monday's levels, and an inbox line reading last
+    # Friday would look like yesterday's post.
+    session = next_session(asof) or asof
+    msg["Subject"] = subject or ("Macro Risk Range Signals - %s"
+                                 % _pretty_date(getattr(session, "isoformat", lambda: session)()))
     msg["From"] = sender or os.environ.get("FRACTAL_SMTP_USER", "")
     msg["To"] = ", ".join(to_addrs)
     msg.set_content(
-        "This report is HTML. Levels for the next session, computed off the %s close.\n"
-        "Open in an HTML-capable client to see the tables." % asof)
+        "This report is HTML. Levels for the %s session, computed off the %s close.\n"
+        "Open in an HTML-capable client to see the tables." % (session, asof))
     msg.add_alternative(html, subtype="html")
     return msg
 

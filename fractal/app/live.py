@@ -187,6 +187,9 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         out.at[i, "pct_to_trade"] = 100 * (trade / spot - 1) if np.isfinite(trade) else np.nan
         out.at[i, "pct_to_trend"] = 100 * (trend / spot - 1) if np.isfinite(trend) else np.nan
         out.at[i, "chg_pct"] = 100 * (spot / r["close_spot"] - 1) if r["close_spot"] else np.nan
+        # Intraday the session's move is spot against the close the levels came
+        # from, which supersedes the close-to-close figure from the daily run.
+        out.at[i, "day_pct"] = out.at[i, "chg_pct"]
         out.at[i, "state"] = (None if (now_trade is None or now_trend is None)
                               else S.classify_state(now_trade, now_trend))
         out.at[i, "signal"] = sig
