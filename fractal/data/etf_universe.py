@@ -45,11 +45,11 @@ AMAT, SNDK, SBSW
 # are carried for market context. Bearish TRADE and TREND on both is falling
 # volatility, which is supportive for risk assets.
 INDICES = """
-VIX, MOVE
+VIX, VXN, MOVE
 """
 
 # Display ticker -> data-feed symbol, where they differ.
-YF_MAP = {"VIX": "^VIX", "MOVE": "^MOVE"}
+YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE"}
 
 
 def yf_symbol(ticker):
@@ -82,7 +82,7 @@ GROUPS = {
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
     "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT"],
-    "volatility":   ["VIX", "MOVE"],
+    "volatility":   ["VIX", "VXN", "MOVE"],
     "stock":        ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "AVGO", "META",
                      "TSLA", "BRK-B", "MU", "LLY", "JPM", "WMT", "AMD", "V", "JNJ",
                      "XOM", "MA", "INTC", "ABBV", "PLTR", "BAC", "ORCL", "CSCO",

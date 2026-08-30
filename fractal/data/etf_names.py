@@ -25,6 +25,7 @@ CACHE = "etf_names.csv"
 # unrelated bond fund), so these are set here rather than fetched.
 OVERRIDES = {
     "VIX": "CBOE Volatility Index",
+    "VXN": "CBOE Nasdaq-100 Volatility Index",
     "MOVE": "ICE BofA MOVE Index",
 }
 
