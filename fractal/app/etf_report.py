@@ -904,10 +904,14 @@ def main():
         "newsletter": os.path.join(args.outdir, "etf_newsletter.html"),
         "csv": os.path.join(args.outdir, "etf_signals_%s.csv" % stamp),
     }
-    # Never on a live run: a breakout is defined on the close, so opening one
-    # intraday would book a position the model has not actually signalled yet.
-    if args.sync and not args.live:
-        P.sync(df, custom=args.portfolio)
+    # On a daily run the whole ladder drives the book. On a live run only a clean
+    # intraday break does -- and only when the quotes are actually fresh, since a
+    # stale-quote pass re-prices nothing and would act on the close twice.
+    if args.sync:
+        if not args.live:
+            P.sync(df, custom=args.portfolio)
+        elif df.attrs.get("live_at") is not None:
+            P.sync(df, custom=args.portfolio, only_intraday=True)
     book = P.reconcile(df, custom=args.portfolio, live=args.live)
     with open(paths["dashboard"], "w", encoding="utf-8") as fh:
         fh.write(render_dashboard(df, eff, book=book))

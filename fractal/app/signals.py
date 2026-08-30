@@ -342,13 +342,6 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         held = " and has held" if was_below else " - watch whether it holds"
         return BREAKDOWN, "at the RANGE low on heavy volume%s" % held
 
-    # Right through the range edge but without the volume to back it. Not a break,
-    # but the name to watch for confirmation tomorrow.
-    if outside_high and trend_bull and not was_above:
-        return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
-    if outside_low and trend_bull is False and not was_below:
-        return WATCHLIST, "below the RANGE low but not on volume - watch for confirmation"
-
     # The break failed and the add taken on it comes off. A trim rather than an
     # exit: what is cut is the breakout tranche, not the core position, which TREND
     # still governs. With no position sizing in the book that is a full exit in
@@ -387,6 +380,18 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # worth owning.
     if at_low and trend_bull is False:
         return WATCHLIST, "at the low end but TREND is bearish - not a buy"
+
+    # Through a range edge without the volume to back it. This is the weakest read
+    # on the ladder and so it comes last. It used to sit above the reclaim branches,
+    # where it swallowed them: a duration line can sit outside the range -- GII
+    # closed with TREND at 75.46 against a range high of 75.45 -- so reclaiming that
+    # line necessarily puts price outside the range, and the reclaim was reported as
+    # an unconfirmed breakout instead. Breaks were unaffected, which made the two
+    # directions behave differently for no reason.
+    if outside_high and trend_bull and not was_above:
+        return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
+    if outside_low and trend_bull is False and not was_below:
+        return WATCHLIST, "below the RANGE low but not on volume - watch for confirmation"
     return None, ""
 
 

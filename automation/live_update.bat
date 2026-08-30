@@ -10,7 +10,7 @@ for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') d
 if not exist "fractal\out\logs" mkdir "fractal\out\logs"
 set LOG=fractal\out\logs\live_%TODAY%.log
 
-python -m fractal.app.etf_report --live --push >> "%LOG%" 2>&1
+python -m fractal.app.etf_report --live --push --sync >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo LIVE REFRESH FAILED %TIME% >> "%LOG%" 2>&1
   endlocal

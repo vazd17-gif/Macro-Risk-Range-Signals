@@ -45,7 +45,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from ..data.loader import load_prices, repo_path
+from ..data.loader import load_prices, next_session, repo_path
 from . import signals as S
 
 COLUMNS = ["ticker", "side", "entry_date", "entry_price", "shares",
@@ -213,20 +213,32 @@ AUTO_OPEN = {S.ADD_LONG: LONG, S.BREAKOUT: LONG,
 AUTO_CLOSE = {S.REMOVE_LONG: LONG, S.COVER_SHORT: SHORT}
 
 
-def sync(sig_df: pd.DataFrame, custom=None, verbose=True):
+def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
     """Bring the book in line with today's signals. Returns (opened, closed).
 
     Closes run before opens so a name that has flipped can come off one side and go
     on the other in the same pass.
 
-    Booked at the close the signal came from, not at some later price, so entry and
-    exit match the bar the decision was made on. Deliberately not called from the
-    intraday re-pricer: the signals are defined on closes, and acting at 11am on a
-    move that closes back inside would put positions in the book the model never
-    signalled.
+    Booked at the close the signal came from, so entry and exit match the bar the
+    decision was made on.
+
+    `only_intraday` restricts the pass to names that crossed a duration line during
+    the current session, and books them at live spot and today's date. That is the
+    one thing worth acting on before the close: a line cleared by more than the
+    crossing buffer has happened, whereas a range-edge read at 11am is just where
+    price is standing at 11am and says nothing about where it closes.
     """
     if sig_df.empty:
         return [], []
+    if only_intraday:
+        if "intraday" not in sig_df:
+            return [], []
+        moved = sig_df["intraday"].astype(str).str.strip()
+        sig_df = sig_df[moved.ne("") & moved.ne("nan")]
+        if sig_df.empty:
+            if verbose:
+                print("  no clean intraday break to act on")
+            return [], []
     held = open_positions(custom)
     have = dict(zip(held["ticker"], held["side"])) if not held.empty else {}
     opened, closed = [], []
@@ -250,9 +262,12 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True):
             continue
         if tk in have:                      # holding the other way: flip it
             _close(tk, price, "%s - flipping to %s" % (sig, side_in))
-        row = add_position(tk, side_in, price=price,
-                           date=str(getattr(r, "asof", "")) or None,
-                           notes="auto: %s" % sig, custom=custom)
+        # An intraday fill belongs to the session it happened in, not to the close
+        # the levels came from.
+        when = next_session(getattr(r, "asof", "")) if only_intraday else getattr(r, "asof", "")
+        row = add_position(tk, side_in, price=price, date=str(when) or None,
+                           notes="auto: %s%s" % (sig, " (intraday)" if only_intraday else ""),
+                           custom=custom)
         have[tk] = side_in
         opened.append(row)
         if verbose:
