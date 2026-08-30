@@ -32,6 +32,14 @@ SIG_STYLE = {
     S.WATCHLIST:   ("#8b94a5", "Watchlist - at the low end but the signal has broken; nothing to act on yet"),
     S.COVER_SHORT: ("#5c9ded", "Cover - a broken name has reclaimed TRADE and/or TREND"),
 }
+BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
+
+
+def _trend_col(trend_bull):
+    """Ticker colour: green above TREND, red below, grey where TREND is unknown."""
+    return BULL if trend_bull else BEAR if trend_bull is False else FLAT
+
+
 GROUP_LABEL = {
     "us_equity": "US Equity", "us_sector": "US Sectors", "us_smallcap": "US Small Cap",
     "thematic": "Thematic", "intl": "International", "commodity": "Commodities",
@@ -274,7 +282,7 @@ def render_dashboard(df, params, generated=None, book=None):
             '<td class="opt" data-v="%s">%s</td>'
             '<td class="l">%s</td><td class="l opt why">%s</td></tr>'
             % (r.ticker, html.escape(sig), r.group, r.vol_flag or "",
-               ("#0ea37f" if r.trend_bull else "#ef5350" if r.trend_bull is False else "#8b94a5"),
+               _trend_col(r.trend_bull),
                r.ticker, GROUP_LABEL.get(r.group, r.group),
                r.spot, _f(r.spot), r.range_low, _f(r.range_low), r.range_high, _f(r.range_high),
                pos, pos * 100,
@@ -302,15 +310,17 @@ def render_dashboard(df, params, generated=None, book=None):
         for h in df[df["intraday"].astype(bool)].itertuples():
             lost = h.intraday.startswith("lost")
             alerts.append((0, h.ticker, "#ef5350" if lost else "#5c9ded",
-                           h.intraday, _f(h.spot)))
+                           h.intraday, _f(h.spot), _trend_col(h.trend_bull)))
     seen = {a[1] for a in alerts}
     for h in df.itertuples():
         if h.ticker in seen or getattr(h, "cash_like", False):
             continue
         if getattr(h, "at_low", False):
-            alerts.append((1, h.ticker, "#0ea37f", "at the low end", _f(h.spot)))
+            alerts.append((1, h.ticker, BULL, "at the low end", _f(h.spot),
+                           _trend_col(h.trend_bull)))
         elif getattr(h, "at_high", False):
-            alerts.append((1, h.ticker, "#d9a441", "at the high end", _f(h.spot)))
+            alerts.append((1, h.ticker, "#d9a441", "at the high end", _f(h.spot),
+                           _trend_col(h.trend_bull)))
     alerts_html = ""
     if alerts:
         alerts.sort(key=lambda a: (a[0], a[1]))
@@ -318,10 +328,10 @@ def render_dashboard(df, params, generated=None, book=None):
             '<a href="#%s" style="text-decoration:none;display:inline-flex;'
             'align-items:center;gap:7px;background:%s18;border:1px solid %s55;'
             'border-radius:8px;padding:6px 11px;color:var(--fg)">'
-            '<b>%s</b><span style="color:%s;font-size:12px">%s</span>'
+            '<b style="color:%s">%s</b><span style="color:%s;font-size:12px">%s</span>'
             '<span style="color:var(--dim);font-size:12px">%s</span></a>'
-            % (tk, col, col, tk, col, html.escape(label), spot)
-            for _, tk, col, label, spot in alerts)
+            % (tk, col, col, tkcol, tk, col, html.escape(label), spot)
+            for _, tk, col, label, spot, tkcol in alerts)
         n_cross = sum(1 for a in alerts if a[0] == 0)
         n_edge = len(alerts) - n_cross
         bits = []
@@ -436,6 +446,9 @@ def render_dashboard(df, params, generated=None, book=None):
 <div class="tablewrap"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>
 <footer>
 Green level = price above it (bullish for that duration), red = below.
+A ticker is coloured by TREND, so a red ticker inside a green &ldquo;at the low end&rdquo;
+chip is a name at the bottom of its range that is below TREND &mdash; the one case the
+handbook says not to buy.
 &ldquo;In range&rdquo; shows where spot sits between the low and high edge.
 Volume is shown as a z-score of log volume against the fund's own 1-month and
 3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue
