@@ -149,6 +149,34 @@ def _num(x):
         return None
 
 
+def _bull(x):
+    """True / False / None for a duration flag, from a frame or a re-read CSV.
+
+    Read back from CSV the flag arrives as the string "True", and bool("False") is
+    True -- which would label every bearish name bullish. Strings are compared, not
+    coerced.
+    """
+    if x is None or x != x:
+        return None
+    if isinstance(x, str):
+        s = x.strip().lower()
+        return True if s == "true" else False if s == "false" else None
+    return bool(x)
+
+
+def _side(bull):
+    return "" if bull is None else ("bullish" if bull else "bearish")
+
+
+def _direction(cross):
+    """Whether a crossing was a break down, a break up, or one of each."""
+    lost = "lost" in cross
+    gained = "reclaimed" in cross
+    if lost and gained:
+        return "mixed"
+    return "bearish" if lost else "bullish" if gained else ""
+
+
 def _detail(r):
     """The lines that make a notification worth reading without opening anything.
 
@@ -172,9 +200,18 @@ def _detail(r):
             rng += "  %d%% in" % round(100 * min(max(pos, 0.0), 1.0))
         lines.append(rng)
 
-    trade, trend = _num(getattr(r, "trade", None)), _num(getattr(r, "trend", None))
-    if trade is not None or trend is not None:
-        lines.append("TRADE %s  TREND %s" % (_fmt(trade), _fmt(trend)))
+    # Each duration carries which side spot is on. The bare numbers left the reader
+    # comparing them against spot in their head, which is the one thing the alert
+    # exists to save them doing.
+    parts = []
+    for label, key in (("TRADE", "trade"), ("TREND", "trend")):
+        level = _num(getattr(r, key, None))
+        if level is None:
+            continue
+        word = _side(_bull(getattr(r, key + "_bull", None)))
+        parts.append("%s %s%s" % (label, _fmt(level), "  " + word if word else ""))
+    if parts:
+        lines.append("   ".join(parts))
     return lines
 
 
@@ -198,11 +235,15 @@ def events(df):
         cross = getattr(r, "intraday", "")
         cross = "" if (cross is None or cross != cross) else str(cross).strip()
         if cross:
+            # "lost" and "reclaimed" say what happened but not what it means. The
+            # direction is the whole point of the alert, so it goes in the title
+            # where iOS shows it even when the banner is collapsed to one line.
+            way = _direction(cross)
             out.append(Event(
                 key="%s|%s" % (tk, cross),
-                title="%s %s" % (tk, cross),
+                title="%s %s%s" % (tk, cross, " - " + way if way else ""),
                 body=nl.join(_detail(r)),
-                short="%s %s at %s" % (tk, cross, spot),
+                short="%s %s at %s%s" % (tk, cross, spot, " (%s)" % way if way else ""),
                 urgent=True,
                 tag=TAGS.get(cross.split(" ")[0], "")))
             continue
@@ -340,15 +381,23 @@ Phone alerts via ntfy -- free, no account, works on iPhone and Android.
 # notification has to be unmistakable at a glance or it is worse than no test.
 def _samples():
     nl = chr(10)
-    body = ("TEST - not a real signal" + nl +
-            "Spot 100.00  +0.0% today" + nl +
-            "Range 98.00 - 102.00  50% in" + nl +
-            "TRADE 99.00  TREND 97.00")
+    def body(trade_side, trend_side, why=""):
+        return ("TEST - not a real signal" + nl +
+                "Spot 100.00  +0.0% today" + nl +
+                "Range 98.00 - 102.00  50% in" + nl +
+                "TRADE 99.00  %s   TREND 97.00  %s" % (trade_side, trend_side) +
+                (nl + why if why else ""))
     return [
-        ("TEST ADD LONG",     body, False, TAGS[ADD_LONG]),
-        ("TEST REMOVE LONG",  body, True,  TAGS[REMOVE_LONG]),
-        ("TEST ADD SHORT",    body, False, TAGS[ADD_SHORT]),
-        ("TEST COVER SHORT",  body, True,  TAGS[COVER_SHORT]),
+        ("TEST ADD LONG", body("bullish", "bullish",
+                               "low end of RANGE, bullish TRADE and TREND"),
+         False, TAGS[ADD_LONG]),
+        ("TEST lost TREND - bearish", body("bullish", "bearish"),
+         True, TAGS["lost"]),
+        ("TEST ADD SHORT", body("bearish", "bearish",
+                                "high end of RANGE, bearish TRADE and TREND"),
+         False, TAGS[ADD_SHORT]),
+        ("TEST reclaimed TRADE - bullish", body("bullish", "bearish"),
+         True, TAGS["reclaimed"]),
     ]
 
 
