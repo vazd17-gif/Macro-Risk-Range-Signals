@@ -24,6 +24,12 @@ import pandas as pd
 from . import signals as S
 from ..data.etf_universe import yf_symbol
 
+# How far past a line price must travel before the move counts as a crossing,
+# as a fraction of the RANGE width. At 2% of a typical 3%-wide range this is
+# roughly 0.06% of spot: far enough to ignore quote jitter, close enough that a
+# genuine break is flagged on the same bar it happens.
+CROSS_BUFFER = 0.02
+
 
 def quotes(tickers, chunk=60):
     """{display ticker: last price}. Missing names are simply absent, never guessed.
@@ -86,11 +92,22 @@ def reprice(df, px=None, edge=S.EDGE):
         now_trend = bool(spot > trend) if np.isfinite(trend) else None
         pos = (spot - lo) / (hi - lo) if (np.isfinite(lo) and np.isfinite(hi) and hi > lo) else np.nan
 
+        # A name resting on its line flips sides on a fraction of a cent, and the
+        # feed returns the last print with enough jitter to do it unprompted. Left
+        # alone that churns the alert strip every ten minutes and pushes a phone
+        # alert for a 0.003% move. So a crossing only counts once price has cleared
+        # the line by a real distance -- scaled to the range width, because a tenth
+        # of a percent is a long way in LQD and nothing at all in ARKQ.
+        buf = (CROSS_BUFFER * (hi - lo)
+               if (np.isfinite(lo) and np.isfinite(hi) and hi > lo) else 0.0)
         crossed = []
-        for name, before, after in (("TREND", was_trend, now_trend),
-                                    ("TRADE", was_trade, now_trade)):
-            if before is not None and after is not None and bool(before) != bool(after):
-                crossed.append(("lost " if before else "reclaimed ") + name)
+        for name, before, after, level in (("TREND", was_trend, now_trend, trend),
+                                           ("TRADE", was_trade, now_trade, trade)):
+            if before is None or after is None or bool(before) == bool(after):
+                continue
+            if np.isfinite(level) and abs(spot - level) <= buf:
+                continue                      # still on the line, not through it
+            crossed.append(("lost " if before else "reclaimed ") + name)
 
         at_low = np.isfinite(pos) and pos <= edge
         at_high = np.isfinite(pos) and pos >= 1 - edge
