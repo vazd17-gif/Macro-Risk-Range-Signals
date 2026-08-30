@@ -419,15 +419,18 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return REMOVE_LONG, event + " with TREND already bearish - exit"
     if recl_trade and trend_bull is False:
         return COVER_SHORT, event + " to the upside - cover, wait for the model to re-short"
-    # The re-entry. Selling on a TRADE break inside a bullish TREND is only half a
-    # rule -- something has to say when to come back, and the same line coming back
-    # is that signal. Without this the model sold and then went silent, and reported
-    # the reclaim as "close the short" on a name nothing was short. Safe by
-    # construction: a short in a bullish-TREND name would already have been closed
-    # by the TREND reclaim one tier up.
-    if recl_trade and trend_bull:
+    # The re-entry, and it fires on the day of the reclaim only. Every other event
+    # flag stays true for FRESH_DAYS so the report keeps showing it, which is right
+    # for a sell -- closing an already-closed position is a no-op -- but wrong for a
+    # buy, because opening is not idempotent. Reading a three-session-old reclaim as
+    # a buy told the book to open seven names it would already have owned: NVDA, USO,
+    # CIBR and AMZN never traded below TRADE on the session at all.
+    if recl_trade and trend_bull and trade_age == 0:
         return ADD_LONG, event + " with TREND still bullish - buy it back"
-    if recl_trade:
+    # A reclaim on a bullish-TREND name that is not today's news is not an
+    # instruction at all: the buy already happened when it reclaimed, and there is
+    # no short to close. Let it fall through to where price actually sits.
+    if recl_trade and not trend_bull:
         return COVER_SHORT, event + " - close the short"
     # A TREND event that yielded to a fresher TRADE one still stands behind it.
     if broke_trend:

@@ -1,9 +1,2 @@
 ticker,side,entry_date,entry_price,shares,notes,status,exit_date,exit_price
 WEAT,long,2026-08-28,28.0,,auto: BREAKOUT,open,,
-XLP,long,2026-08-28,85.44999694824219,,auto: ADD LONG,open,,
-NVDA,long,2026-08-28,217.5500030517578,,auto: ADD LONG,open,,
-USO,long,2026-08-28,129.6999969482422,,auto: ADD LONG,open,,
-JPM,long,2026-08-28,357.6199951171875,,auto: ADD LONG,open,,
-CIBR,long,2026-08-28,98.55999755859376,,auto: ADD LONG,open,,
-AMZN,long,2026-08-28,266.42999267578125,,auto: ADD LONG,open,,
-AAPL,long,2026-08-28,319.70001220703125,,auto: ADD LONG,open,,
