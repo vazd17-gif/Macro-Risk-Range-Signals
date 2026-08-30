@@ -73,7 +73,7 @@ def _pretty_date(iso):
         return str(iso)
 
 
-def build_message(to_addrs, subject=None, html_path=None, sender=None):
+def build_message(to_addrs, subject=None, html_path=None, sender=None, as_draft=False):
     html_path = html_path or repo_path("out", "etf_newsletter.html")
     with open(html_path, "r", encoding="utf-8") as fh:
         html = fh.read()
@@ -86,8 +86,20 @@ def build_message(to_addrs, subject=None, html_path=None, sender=None):
     session = next_session(asof) or asof
     msg["Subject"] = subject or ("Macro Risk Range Signals - %s"
                                  % _pretty_date(getattr(session, "isoformat", lambda: session)()))
-    msg["From"] = sender or os.environ.get("FRACTAL_SMTP_USER", "")
-    msg["To"] = ", ".join(to_addrs)
+    # Recipients go in the envelope, not the headers, so nobody on the list sees
+    # who else is on it. The message therefore carries no To: of its own -- the
+    # sender is addressed instead, which is what a Bcc-only mail looks like and
+    # what keeps clients from rendering "undisclosed recipients" as a broken field.
+    # `send` passes the real list to SMTP separately; anything that builds a message
+    # without doing that will mail nobody, which is the safe direction to fail.
+    frm = sender or os.environ.get("FRACTAL_SMTP_USER", "")
+    msg["From"] = frm
+    msg["To"] = frm
+    if as_draft:
+        # A saved .eml is a draft someone may send by hand, and a draft with no
+        # recipients mails nobody. Bcc belongs here and only here -- on the wire the
+        # list travels in the envelope instead.
+        msg["Bcc"] = ", ".join(to_addrs)
     msg.set_content(
         "This report is HTML. Levels for the %s session, computed off the %s close.\n"
         "Open in an HTML-capable client to see the tables." % (session, asof))
@@ -116,7 +128,7 @@ def send(to_addrs, subject=None, html_path=None, force=False):
     try:
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as smtp:
             smtp.login(user, pwd)
-            smtp.send_message(msg)
+            smtp.send_message(msg, from_addr=user, to_addrs=list(to_addrs))
     except smtplib.SMTPAuthenticationError as e:
         raise RuntimeError(
             "Gmail rejected the login for %s. Use a 16-character app password from "
@@ -125,14 +137,18 @@ def send(to_addrs, subject=None, html_path=None, force=False):
             % (user, getattr(e, "smtp_code", "auth error"))) from None
     if asof:
         mark_sent(asof)
-    print("[publish] sent the %s report to %s" % (asof, ", ".join(to_addrs)))
+    print("[publish] sent the %s report to %d bcc recipient(s): %s"
+          % (asof, len(to_addrs), ", ".join(to_addrs)))
     return True
 
 
 def save_eml(to_addrs, out_path=None, subject=None, html_path=None):
-    """Write the message as a .eml file - open it in any mail client to review or send."""
+    """Write the message as a .eml file - open it in any mail client to review or send.
+
+    The draft carries the recipients as Bcc so it is actually sendable by hand.
+    """
     out_path = out_path or repo_path("out", "newsletter.eml")
-    msg = build_message(to_addrs, subject, html_path)
+    msg = build_message(to_addrs, subject, html_path, as_draft=True)
     with open(out_path, "wb") as fh:
         fh.write(bytes(msg))
     print("[publish] wrote %s" % out_path)
