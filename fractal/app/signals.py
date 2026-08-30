@@ -450,6 +450,12 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # A long is never opened against a bearish TREND. Price being cheap inside a
     # downtrend is not a buy -- the same mistake as reading a spike above the range
     # as a breakout when TREND disagrees.
+    # Each edge cuts both ways, and which way depends on the direction you are
+    # positioned. In a bullish name the low end is where you buy and the high end is
+    # where you take some off; in a bearish one the high end is where you short and
+    # the low end is where you buy some back. Only the two opening cases used to be
+    # here, so a bullish name at the top of its range said nothing at all and a
+    # bearish one at the bottom went on a watchlist rather than reducing the short.
     if buy_low and trend_bull and trade_bull:
         return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
     if buy_low and trend_bull:
@@ -458,11 +464,10 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
                 else ("TRADE" if trade_bull is False else "TREND"))
         return ADD_SHORT, "high end of RANGE, bearish %s" % both
-
-    # Cheap, but inside a downtrend and with nothing reclaimed. Worth watching, not
-    # worth owning.
+    if sell_high and trend_bull:
+        return TRIM_LONG, "high end of RANGE in a bullish TREND - take some off"
     if buy_low and trend_bull is False:
-        return WATCHLIST, "at the low end but TREND is bearish - not a buy"
+        return TRIM_SHORT, "low end of RANGE in a bearish TREND - buy some back"
 
     # Through a range edge without the volume to back it: the weakest read here, so
     # it comes last. A duration line can sit outside the range -- GII closed with
