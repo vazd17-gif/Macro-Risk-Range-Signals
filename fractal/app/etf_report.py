@@ -1,0 +1,694 @@
+"""Macro Risk Range report: interactive dashboard + email newsletter.
+
+Two renderers over the same signal set (app/signals.py):
+
+  dashboard   a self-contained interactive page - sortable, filterable, with a
+              visual range bar per name. For working through the whole list.
+  newsletter  a narrow, inline-styled HTML email that leads with the actionable
+              names and keeps the full table as an appendix. Email clients strip
+              <style> blocks and ignore flexbox, so the newsletter is built with
+              tables and inline styles only.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import html
+import os
+
+import numpy as np
+import pandas as pd
+
+from ..data.loader import load_params, repo_path
+from . import signals as S
+from . import portfolio as P
+from ..data.etf_names import short_names
+
+# ---------------------------------------------------------------- shared bits
+SIG_STYLE = {
+    S.ADD_LONG:    ("#0ea37f", "Buy - price at the low end of the RANGE with the signal still bullish"),
+    S.REMOVE_LONG: ("#ef5350", "Sell - has broken TRADE and/or TREND"),
+    S.ADD_SHORT:   ("#d9a441", "Short or avoid - price at the high end of the RANGE with a bearish signal"),
+    S.WATCHLIST:   ("#8b94a5", "Watchlist - at the low end but the signal has broken; nothing to act on yet"),
+    S.COVER_SHORT: ("#5c9ded", "Cover - a broken name has reclaimed TRADE and/or TREND"),
+}
+GROUP_LABEL = {
+    "us_equity": "US Equity", "us_sector": "US Sectors", "us_smallcap": "US Small Cap",
+    "thematic": "Thematic", "intl": "International", "commodity": "Commodities",
+    "fixed_income": "Fixed Income / Credit", "fx_crypto": "FX & Crypto",
+    "stock": "S&P 500 Stocks", "other": "Other",
+}
+
+
+def _universe_label(df):
+    """e.g. "157 ETFs, 31 stocks" -- the list is no longer funds only."""
+    n_stock = int((df["group"] == "stock").sum()) if "group" in df else 0
+    n_fund = len(df) - n_stock
+    parts = []
+    if n_fund:
+        parts.append("%d ETF%s" % (n_fund, "" if n_fund == 1 else "s"))
+    if n_stock:
+        parts.append("%d stock%s" % (n_stock, "" if n_stock == 1 else "s"))
+    return ", ".join(parts) or "%d names" % len(df)
+
+
+def _weekday_label(datestr):
+    """Short weekday name of the baseline bar, e.g. Friday -> 'Fri'."""
+    try:
+        return pd.Timestamp(datestr).strftime("%a")
+    except Exception:
+        return "last"
+
+
+REFRESH_SECONDS = 300      # the live page reloads itself every 5 minutes
+
+VOL_COLOUR = {"surge": "#d9a441", "dry": "#5c9ded"}
+
+# Columns dropped on a narrow screen -- reference detail rather than decisions.
+OPTIONAL_COLS = {"Range low", "Range high", "% to low", "% to high",
+                 "TRADE", "TREND", "Volume", "z vs 1m", "z vs 3m", "Why"}
+
+
+def _vol(v):
+    """Compact share volume: 25020400 -> 25.0M."""
+    if v is None or not np.isfinite(v):
+        return "&ndash;"
+    for cut, suf in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if abs(v) >= cut:
+            return "%.1f%s" % (v / cut, suf)
+    return "%.0f" % v
+
+
+def _z_cell(z, thresh=2.0):
+    """Volume z-score, tinted once it clears the outlier threshold."""
+    if z is None or not np.isfinite(z):
+        return "&ndash;"
+    txt = "%+.1f" % z
+    if z >= thresh:
+        return '<span style="color:%s;font-weight:650">%s</span>' % (VOL_COLOUR["surge"], txt)
+    if z <= -thresh:
+        return '<span style="color:%s;font-weight:650">%s</span>' % (VOL_COLOUR["dry"], txt)
+    return txt
+
+
+def _pct_cell(v, flag=""):
+    """Signed percentage, tinted when the session is a volume outlier."""
+    if v is None or not np.isfinite(v):
+        return "&ndash;"
+    col = VOL_COLOUR.get(flag)
+    txt = "%+.0f%%" % v
+    return ('<span style="color:%s;font-weight:650">%s</span>' % (col, txt)) if col else txt
+
+
+def _f(v, nd=2):
+    if v is None or (isinstance(v, float) and not np.isfinite(v)):
+        return "&ndash;"
+    return ("%%.%df" % nd) % v
+
+
+def _bull_cell(level, bull):
+    if level is None or not np.isfinite(level):
+        return "&ndash;"
+    colour = "#0ea37f" if bull else ("#ef5350" if bull is False else "#8b94a5")
+    return '<span style="color:%s">%s</span>' % (colour, _f(level))
+
+
+# ------------------------------------------------------------------ dashboard
+CSS = """
+:root{--bg:#0d0f13;--panel:#151920;--line:#242a34;--fg:#e6e9ef;--dim:#8b94a5;
+--bull:#0ea37f;--bear:#ef5350;--warn:#d9a441;--info:#5c9ded}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1600px;margin:0 auto;padding:26px 20px 64px}
+h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+.cards{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+padding:10px 15px;min-width:132px;border-left:3px solid var(--line)}
+.card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.card .v{font-size:20px;font-weight:650;margin-top:2px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+button{background:var(--panel);color:var(--fg);border:1px solid var(--line);
+border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer}
+button:hover{border-color:#39414f}
+button[aria-pressed="true"]{background:#1d2530;border-color:#3d4a5c;color:#fff}
+input[type=search]{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+color:var(--fg);padding:6px 11px;font-size:12.5px;min-width:150px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:1180px}
+th,td{padding:7px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{position:sticky;top:0;background:#11151b;color:var(--dim);font-weight:600;font-size:11px;
+text-transform:uppercase;letter-spacing:.05em;cursor:pointer;z-index:1}
+th:first-child,td:first-child,td.l{text-align:left}
+tbody tr:hover{background:#1a1f27}
+.tk{font-weight:650}.grp{color:var(--dim);font-size:11px}
+.bar{position:relative;width:132px;height:8px;border-radius:4px;background:#1e242e;display:inline-block;vertical-align:middle}
+.bar u{position:absolute;inset:0;border-radius:4px;
+background:linear-gradient(90deg,rgba(14,163,127,.30),rgba(90,100,120,.12),rgba(239,83,80,.30))}
+.bar i{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;background:#fff}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;
+letter-spacing:.02em;white-space:nowrap}
+.why{color:var(--dim);font-size:11.5px}
+footer{color:var(--dim);font-size:12px;margin-top:20px;line-height:1.7}
+code{background:#11151b;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* On a phone the table cannot carry thirteen columns, so the reference detail
+   (range edges, distances, line levels, volume) is dropped and only what you act
+   on survives: the name, spot, where it sits in the range, and the signal. */
+@media (max-width: 820px){
+  .wrap{padding:18px 12px 48px}
+  h1{font-size:19px}
+  table{min-width:0}
+  th.opt,td.opt{display:none}
+  th,td{padding:7px 8px}
+  .bar{width:76px}
+  .card{min-width:0;flex:1 1 42%;padding:9px 12px}
+  .card .v{font-size:18px}
+  .grp{display:none}
+  input[type=search]{flex:1 1 100%}
+}
+"""
+
+JS = """
+const rows=[...document.querySelectorAll('tbody tr')];let dir={};
+document.querySelectorAll('th').forEach((th,i)=>{th.onclick=()=>{dir[i]=!dir[i];
+const tb=document.querySelector('tbody');
+rows.slice().sort((a,b)=>{const x=a.children[i].dataset.v??a.children[i].textContent,
+y=b.children[i].dataset.v??b.children[i].textContent;const nx=parseFloat(x),ny=parseFloat(y);
+const c=(!isNaN(nx)&&!isNaN(ny))?nx-ny:String(x).localeCompare(String(y));return dir[i]?-c:c;})
+.forEach(r=>tb.appendChild(r));};});
+function apply(){const f=document.querySelector('button[data-sig][aria-pressed="true"]');
+const g=document.querySelector('button[data-grp][aria-pressed="true"]');
+const v=document.querySelector('button[data-vol][aria-pressed="true"]');
+const q=(document.getElementById('q').value||'').toUpperCase();
+rows.forEach(r=>{const okS=!f||r.dataset.sig===f.dataset.sig;
+const okG=!g||r.dataset.grp===g.dataset.grp;const okQ=!q||r.dataset.tk.includes(q);
+const okV=!v||r.dataset.vol===v.dataset.vol;
+r.style.display=(okS&&okG&&okQ&&okV)?'':'none';});}
+document.querySelectorAll('button[data-sig],button[data-grp],button[data-vol]').forEach(b=>{b.onclick=()=>{
+const on=b.getAttribute('aria-pressed')==='true';
+const attr=b.dataset.sig!==undefined?'data-sig':(b.dataset.grp!==undefined?'data-grp':'data-vol');
+document.querySelectorAll('button['+attr+']').forEach(o=>o.setAttribute('aria-pressed','false'));
+b.setAttribute('aria-pressed',on?'false':'true');apply();};});
+document.getElementById('q').addEventListener('input',apply);
+"""
+
+
+def render_dashboard(df, params, generated=None, book=None):
+    generated = generated or dt.datetime.now()
+    asof = df["asof"].max() if len(df) else "-"
+    counts = df["signal"].value_counts().to_dict()
+
+    body = []
+    for r in df.itertuples():
+        pos = float(np.clip(r.pos_in_range, 0, 1))
+        sig = r.signal or ""
+        colour = SIG_STYLE.get(sig, ("#8b94a5", ""))[0]
+        pill = ('<span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span>'
+                % (colour, colour, colour, html.escape(sig))) if sig else ""
+        body.append(
+            '<tr id="%s" data-sig="%s" data-grp="%s" data-tk="%s" data-vol="%s">'
+            '<td class="l"><span class="tk" style="color:%s">%s</span> <span class="grp">%s</span></td>'
+            '<td data-v="%s">%s</td>'
+            '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
+            '<td data-v="%.4f"><div class="bar"><u></u><i style="left:%.1f%%"></i></div></td>'
+            '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
+            '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
+            '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
+            '<td class="opt" data-v="%s">%s</td>'
+            '<td class="l">%s</td><td class="l opt why">%s</td></tr>'
+            % (r.ticker, html.escape(sig), r.group, r.ticker, r.vol_flag or "",
+               ("#0ea37f" if r.trend_bull else "#ef5350" if r.trend_bull is False else "#8b94a5"),
+               r.ticker, GROUP_LABEL.get(r.group, r.group),
+               r.spot, _f(r.spot), r.range_low, _f(r.range_low), r.range_high, _f(r.range_high),
+               pos, pos * 100,
+               r.pct_to_low, _f(r.pct_to_low), r.pct_to_high, _f(r.pct_to_high),
+               r.trade, _bull_cell(r.trade, r.trade_bull),
+               r.trend, _bull_cell(r.trend, r.trend_bull),
+               r.volume, _vol(r.volume),
+               r.vol_z_1m, _z_cell(r.vol_z_1m),
+               r.vol_z_3m, _z_cell(r.vol_z_3m),
+               pill, html.escape(r.why or "")))
+
+    cards = [("Names", len(df), "var(--line)")]
+    for name in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT):
+        cards.append((name.title(), counts.get(name, 0), SIG_STYLE[name][0]))
+
+    base_lbl = _weekday_label(asof)
+
+    # The alert strip carries the two things that are only true right now: a line
+    # crossed during this session, and price sitting at an edge of today's range.
+    # Both are transient -- by tonight's close the crossing is just history and the
+    # edge has usually been left behind -- which is what makes them worth the top of
+    # the screen rather than a column in the table.
+    alerts = []
+    if "intraday" in df:
+        for h in df[df["intraday"].astype(bool)].itertuples():
+            lost = h.intraday.startswith("lost")
+            alerts.append((0, h.ticker, "#ef5350" if lost else "#5c9ded",
+                           h.intraday, _f(h.spot)))
+    seen = {a[1] for a in alerts}
+    for h in df.itertuples():
+        if h.ticker in seen or getattr(h, "cash_like", False):
+            continue
+        if getattr(h, "at_low", False):
+            alerts.append((1, h.ticker, "#0ea37f", "at the low end", _f(h.spot)))
+        elif getattr(h, "at_high", False):
+            alerts.append((1, h.ticker, "#d9a441", "at the high end", _f(h.spot)))
+
+    alerts_html = ""
+    if alerts:
+        alerts.sort(key=lambda a: (a[0], a[1]))
+        chips = "".join(
+            '<a href="#%s" style="text-decoration:none;display:inline-flex;'
+            'align-items:center;gap:7px;background:%s18;border:1px solid %s55;'
+            'border-radius:8px;padding:6px 11px;color:var(--fg)">'
+            '<b>%s</b><span style="color:%s;font-size:12px">%s</span>'
+            '<span style="color:var(--dim);font-size:12px">%s</span></a>'
+            % (tk, col, col, tk, col, html.escape(label), spot)
+            for _, tk, col, label, spot in alerts)
+        n_cross = sum(1 for a in alerts if a[0] == 0)
+        n_edge = len(alerts) - n_cross
+        bits = []
+        if n_cross:
+            bits.append("%d crossed a line" % n_cross)
+        if n_edge:
+            bits.append("%d at a range edge" % n_edge)
+        alerts_html = (
+            '<div style="border:1px solid #3d4a5c;background:#141a22;border-radius:10px;'
+            'padding:13px 15px;margin-bottom:20px">'
+            '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;'
+            'color:var(--dim);margin-bottom:9px">Alert &middot; %s</div>'
+            '<div style="display:flex;flex-wrap:wrap;gap:8px">%s</div></div>'
+            % (" &middot; ".join(bits), chips))
+
+    pf_html = ""
+    if book is not None and not book.empty:
+        prow = []
+        for b in book.itertuples():
+            ac = P.ACTION_COLOUR.get(b.action, "#8b94a5")
+            pc = "#0ea37f" if b.pnl_pct >= 0 else "#ef5350"
+            tc = "#0ea37f" if b.since_close_pct >= 0 else "#ef5350"
+            sidec = "#0ea37f" if b.side == "long" else "#ef5350"
+            days = ("%d" % b.days_held) if np.isfinite(b.days_held) else "&ndash;"
+            prow.append(
+                '<tr><td class="l"><span class="tk">%s</span></td>'
+                '<td class="l" style="color:%s;text-transform:uppercase;font-size:11.5px;font-weight:650">%s</td>'
+                '<td class="l" style="color:var(--dim)">%s</td>'
+                '<td data-v="%s">%s</td><td data-v="%s">%s</td>'
+                '<td data-v="%s" style="font-weight:650">%s</td>'
+                '<td data-v="%.4f" style="color:%s;font-weight:650">%+.2f%%</td>'
+                '<td data-v="%.4f" style="color:%s">%+.2f%%</td>'
+                '<td>%s</td>'
+                '<td class="l"><span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span></td>'
+                '<td class="l why">%s</td></tr>'
+                % (b.ticker, sidec, b.side, b.entry_date,
+                   b.entry_price, _f(b.entry_price),
+                   b.base_close, _f(b.base_close),
+                   b.spot, _f(b.spot),
+                   b.pnl_pct, pc, b.pnl_pct,
+                   b.since_close_pct, tc, b.since_close_pct,
+                   days,
+                   ac, ac, ac, html.escape(b.action), html.escape(b.action_why or "")))
+        pf_html = (
+            '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Portfolio '
+            '<span style="color:var(--dim);font-weight:400;font-size:13px">'
+            '&middot; %d open &middot; since entry %+.2f%% &middot; since %s %+.2f%%</span></h2>'
+            '<div class="tablewrap" style="margin-bottom:24px"><table style="min-width:1000px">'
+            '<thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>'
+            % (len(book), book["pnl_pct"].mean(), base_lbl, book["since_close_pct"].mean(),
+               "".join("<th>%s</th>" % h for h in
+                       ["Position", "Side", "Added", "Entry", "%s close" % base_lbl,
+                        "Spot", "P&L", "Since %s" % base_lbl, "Days", "Action", "Why"]),
+               "".join(prow)))
+
+    heads = ["ETF", "Spot", "Range low", "Range high", "In range",
+             "% to low", "% to high", "TRADE", "TREND",
+             "Volume", "z vs 1m", "z vs 3m", "Signal", "Why"]
+    groups = [g for g in GROUP_LABEL if g in set(df["group"])]
+    live_at = df.attrs.get("live_at")
+    n_live = df.attrs.get("n_live", 0)
+    if live_at:
+        stamp = ('<span style="color:var(--bull)">&#9679; live</span> &middot; '
+                 "%d quotes at %s" % (n_live, live_at.strftime("%H:%M")))
+        refresh = '<meta http-equiv="refresh" content="%d">' % REFRESH_SECONDS
+    else:
+        stamp = "generated %s" % generated.strftime("%Y-%m-%d %H:%M")
+        refresh = ""
+
+    return """<title>Macro Risk Range Signals</title>
+%s
+<style>%s</style>
+<div class="wrap">
+<h1>Macro Risk Range Signals</h1>
+<div class="sub">%s &middot; levels for the next session, computed from the bar closing %s
+&middot; %s</div>
+<div class="cards">%s</div>
+%s
+%s
+<div class="controls">
+%s<span style="width:8px"></span>%s<span style="width:8px"></span>
+<button data-vol="surge" aria-pressed="false">Volume surge</button>
+<button data-vol="dry" aria-pressed="false">Volume dry</button>
+<input id="q" type="search" placeholder="filter ticker&hellip;">
+</div>
+<div class="tablewrap"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>
+<footer>
+Green level = price above it (bullish for that duration), red = below.
+&ldquo;In range&rdquo; shows where spot sits between the low and high edge.
+Volume is shown as a z-score of log volume against the fund's own 1-month and
+3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue
+an unusually light one (z &le; &minus;2).
+</footer></div>
+<script>%s</script>
+""" % (refresh, CSS, _universe_label(df), asof, stamp,
+       "".join('<div class="card" style="border-left-color:%s"><div class="k">%s</div>'
+               '<div class="v">%s</div></div>' % (c, k, v) for k, v, c in cards),
+       alerts_html,
+       pf_html,
+       "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s.title())
+               for s in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT)),
+       "".join('<button data-grp="%s" aria-pressed="false">%s</button>'
+               % (g, GROUP_LABEL[g]) for g in groups),
+       "".join('<th%s>%s</th>' % (' class="opt"' if h in OPTIONAL_COLS else "", h)
+               for h in heads),
+       "".join(body), JS)
+
+
+# ----------------------------------------------------------------- newsletter
+def _nl_section(title, colour, blurb, rows, kind, NAMES=None):
+    NAMES = NAMES or {}
+    if rows.empty:
+        return ""
+    items = []
+    for r in rows.itertuples():
+        if kind == "long":
+            detail = ("buy zone <b>%s</b> &ndash; %s &middot; only %.1f%% above the low end "
+                      "&middot; TRADE %s, TREND %s"
+                      % (_f(r.range_low), _f(r.range_high), abs(r.pct_to_low),
+                         _f(r.trade), _f(r.trend)))
+        elif kind == "short":
+            detail = ("range <b>%s</b> &ndash; <b>%s</b> &middot; only %.1f%% below the high end "
+                      "&middot; TRADE %s, TREND %s"
+                      % (_f(r.range_low), _f(r.range_high), abs(r.pct_to_high),
+                         _f(r.trade), _f(r.trend)))
+        else:
+            detail = ("%s &middot; TRADE %s (%+.1f%%), TREND %s (%+.1f%%)"
+                      % (html.escape(r.why or ""), _f(r.trade), r.pct_to_trade,
+                         _f(r.trend), r.pct_to_trend))
+        nm = NAMES.get(r.ticker, "")
+        if np.isfinite(r.vol_z_3m):
+            vcol = VOL_COLOUR.get(r.vol_flag, "#8b94a5")
+            detail += ('<br><span style="color:%s">volume %s &middot; z %+.1f vs 1m '
+                       '&middot; z %+.1f vs 3m%s</span>'
+                       % (vcol, _vol(r.volume), r.vol_z_1m, r.vol_z_3m,
+                          (" &middot; " + r.vol_flag.upper()) if r.vol_flag else ""))
+        meta = " &nbsp;&middot;&nbsp; ".join(
+            x for x in (html.escape(nm) if nm else "", _f(r.spot)) if x)
+        items.append(
+            '<tr><td style="padding:9px 0;border-bottom:1px solid #e6e8ec">'
+            '<div><span style="font-weight:700;font-size:15px;color:#111">%s</span>'
+            '<span style="color:#8b94a5;font-size:12px"> &nbsp;%s</span></div>'
+            '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">%s</div>'
+            '</td></tr>' % (r.ticker, meta, detail))
+    return (
+        '<tr><td style="padding:22px 0 6px">'
+        '<span style="display:inline-block;background:%s;color:#fff;font-size:12px;font-weight:700;'
+        'letter-spacing:.06em;padding:4px 10px;border-radius:4px">%s &nbsp;(%d)</span>'
+        '<div style="color:#5a6270;font-size:12.5px;margin-top:7px">%s</div></td></tr>'
+        '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
+        % (colour, title, len(rows), blurb, "".join(items)))
+
+
+def _explainer():
+    """The "how to read this" block that opens every issue.
+
+    Set small and tight: it sits above the signals, so it has to be skimmable by
+    someone who already knows it and complete for someone who does not.
+    """
+    terms = [
+        ("RISK RANGE",
+         "The high and low price is likely to trade between today, from recent "
+         "volatility. It is an envelope, not a direction call &mdash; it says how far, "
+         "not which way. The edges are where decisions get made: at the low end you "
+         "are being offered the best price of the session, at the high end the worst. "
+         "Levels are fixed by yesterday&rsquo;s close and hold all day, so price moves "
+         "through them rather than with them."),
+        ("TRADE",
+         "The short-duration line. Price above it is bullish TRADE, below is bearish. "
+         "It is the tactical read &mdash; where to add inside a position you already "
+         "hold, and the first thing to break when momentum turns."),
+        ("TREND",
+         "The cycle line, and the one that matters. Price above it is bullish TREND. A "
+         "break of TREND is a regime change, not a wobble; a break of TRADE while TREND "
+         "holds is usually noise inside an intact move."),
+        ("PUTTING THEM TOGETHER",
+         "Both bullish is trending long; both bearish is trending short; one of each is "
+         "counter-trend. The rule that saves the most money: do not buy the low end of "
+         "the RANGE while TRADE is broken. Wait for TREND to hold. Those names sit under "
+         "WATCHLIST rather than ADD LONG."),
+        ("VOLUME",
+         "How unusual today&rsquo;s volume is for that name, measured in standard "
+         "deviations rather than percent &mdash; a +60% day is routine for a thin fund "
+         "and remarkable for a large one. Beyond &plusmn;2 is flagged. It does not "
+         "generate a signal on its own; it tells you whether a move happened on "
+         "conviction or on nobody trading."),
+    ]
+    rows = "".join(
+        '<div style="margin-top:9px">'
+        '<span style="font-weight:700;color:#3d4552;font-size:11px;letter-spacing:.05em">'
+        '%s</span><br>'
+        '<span style="color:#6b7280;font-size:11.5px;line-height:1.5">%s</span></div>'
+        % (term, body) for term, body in terms)
+    return (
+        '<tr><td style="padding:14px 0 4px">'
+        '<div style="background:#fafbfc;border:1px solid #e6e8ec;border-radius:8px;'
+        'padding:12px 14px 14px">'
+        '<div style="font-weight:700;font-size:10.5px;letter-spacing:.07em;color:#8b94a5">'
+        'HOW TO READ THIS</div>%s</div></td></tr>' % rows)
+
+
+def render_newsletter(df, params, generated=None, book=None):
+    generated = generated or dt.datetime.now()
+    asof = df["asof"].max() if len(df) else "-"
+    b = S.buckets(df)
+
+    base_lbl = _weekday_label(asof)
+    names = short_names()
+    pf = ""
+    if book is not None and not book.empty:
+        items = []
+        for pos in book.itertuples():
+            ac = P.ACTION_COLOUR.get(pos.action, "#8b94a5")
+            pc = "#0b8f6e" if pos.pnl_pct >= 0 else "#d33"
+            items.append(
+                '<tr><td style="padding:9px 0;border-bottom:1px solid #e6e8ec">'
+                '<div><span style="font-weight:700;font-size:15px;color:#111">%s</span>'
+                '<span style="color:#8b94a5;font-size:12px"> &nbsp;%s%s since %s</span>'
+                '<span style="float:right;font-weight:700;color:%s">%+.2f%%</span></div>'
+                '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">'
+                'entry <b>%s</b> &rarr; spot <b>%s</b>'
+                '<span style="color:#8b94a5"> &middot; %s day%s held &middot; '
+                'since %s %+.2f%%</span></div>'
+                '<div style="margin-top:4px"><span style="background:%s;color:#fff;font-size:11px;'
+                'font-weight:700;padding:2px 7px;border-radius:3px">%s</span>'
+                '<span style="color:#5a6270;font-size:12.5px"> &nbsp;%s</span></div></td></tr>'
+                % (pos.ticker,
+                   (html.escape(names.get(pos.ticker, "")) + " &nbsp;&middot;&nbsp; ")
+                   if names.get(pos.ticker) else "",
+                   pos.side, pos.entry_date, pc, pos.pnl_pct,
+                   _f(pos.entry_price), _f(pos.spot),
+                   ("%d" % pos.days_held) if np.isfinite(pos.days_held) else "&ndash;",
+                   "" if pos.days_held == 1 else "s",
+                   base_lbl, pos.since_close_pct,
+                   ac, html.escape(pos.action), html.escape(pos.action_why or "holding")))
+        pf = ('<tr><td style="padding:20px 0 6px">'
+              '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
+              'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
+              'PORTFOLIO &nbsp;(%d open)</span>'
+              '</td></tr>'
+              '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
+              % (len(book), "".join(items)))
+
+    sections = "".join([
+        _nl_section("ADD LONG", SIG_STYLE[S.ADD_LONG][0],
+                    "Price is at or near the LOW end of the Risk Range and the signal is "
+                    "bullish TRADE and/or TREND.", b[S.ADD_LONG], "long", names),
+        _nl_section("REMOVE LONG", SIG_STYLE[S.REMOVE_LONG][0],
+                    "Has broken TRADE and/or TREND in the last few sessions.",
+                    b[S.REMOVE_LONG], "event", names),
+        _nl_section("ADD SHORT", SIG_STYLE[S.ADD_SHORT][0],
+                    "Price is at or near the HIGH end of the Risk Range and the signal is "
+                    "bearish TRADE and/or TREND. Short, or avoid if long-only.",
+                    b[S.ADD_SHORT], "short", names),
+        _nl_section("WATCHLIST", SIG_STYLE[S.WATCHLIST][0],
+                    "At the low end of the Risk Range but the signal has broken. Worth "
+                    "watching - no action yet. Wait for TREND support to hold before buying.",
+                    b[S.WATCHLIST], "event", names),
+        _nl_section("COVER SHORT", SIG_STYLE[S.COVER_SHORT][0],
+                    "A broken name has reclaimed TRADE and/or TREND.", b[S.COVER_SHORT], "event", names),
+    ])
+    if not sections:
+        sections = ('<tr><td style="padding:26px 0;color:#5a6270">No ETF triggered a signal '
+                    'today. Everything on the list is mid-range with no fresh line breaks.</td></tr>')
+
+    # volume outliers, independent of the price signals
+    outl = df[df["vol_flag"].astype(bool)] if "vol_flag" in df else df.iloc[0:0]
+    if len(outl):
+        rowsv = []
+        for r in outl.sort_values("vol_z", ascending=False).itertuples():
+            col = VOL_COLOUR.get(r.vol_flag, "#8b94a5")
+            rowsv.append(
+                '<tr><td style="padding:9px 0;border-bottom:1px solid #e6e8ec">'
+                '<div><span style="font-weight:700;color:#111">%s</span>'
+                '<span style="color:#8b94a5;font-size:12px"> &nbsp;%s</span>'
+                '<span style="float:right;font-weight:700;color:%s">%s</span></div>'
+                '<div style="color:#5a6270;font-size:12.5px;margin-top:3px">'
+                'traded <b>%s</b> shares'
+                '<br>1-month average <b>%s</b> &nbsp;&rarr;&nbsp; %+.0f%% '
+                '<span style="color:%s">(z %+.1f)</span>'
+                '<br>3-month average <b>%s</b> &nbsp;&rarr;&nbsp; %+.0f%% '
+                '<span style="color:%s">(z %+.1f)</span>'
+                '</div></td></tr>'
+                % (r.ticker, html.escape(names.get(r.ticker, "")), col, r.vol_flag.upper(),
+                   _vol(r.volume),
+                   _vol(r.vol_1m_avg), r.vol_vs_1m_pct, col, r.vol_z_1m,
+                   _vol(r.vol_3m_avg), r.vol_vs_3m_pct, col, r.vol_z_3m))
+        sections += (
+            '<tr><td style="padding:22px 0 6px">'
+            '<span style="display:inline-block;background:#6b4fa8;color:#fff;font-size:12px;'
+            'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
+            'VOLUME OUTLIERS &nbsp;(%d)</span>'
+            '<div style="color:#5a6270;font-size:12.5px;margin-top:7px">'
+            'Sessions where volume was unusually heavy or light for that fund. Shown '
+            'against both the 1-month and the 3-month average, in shares and as a '
+            'z-score of log volume against that window.</div></td></tr>'
+            '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
+            % (len(outl), "".join(rowsv)))
+
+    # appendix: every name, compact
+    app = []
+    for g, grp in df.groupby("group", sort=False):
+        app.append('<tr><td colspan="8" style="padding:14px 0 4px;font-weight:700;font-size:12px;'
+                   'color:#8b94a5;letter-spacing:.05em;text-transform:uppercase">%s</td></tr>'
+                   % GROUP_LABEL.get(g, g))
+        for r in grp.sort_values("ticker").itertuples():
+            tc = "#0ea37f" if r.trade_bull else "#ef5350"
+            nc = "#0ea37f" if r.trend_bull else "#ef5350"
+            app.append(
+                '<tr>'
+                '<td style="padding:3px 6px 3px 0;color:%s">'
+                '<span style="font-weight:700">%s</span>'
+                '<span style="color:#9aa1ad;font-weight:400;font-size:11px"> %s</span></td>'
+                '<td align="right" style="padding:3px 6px">%s</td>'
+                '<td align="right" style="padding:3px 6px;color:#5a6270">%s</td>'
+                '<td align="right" style="padding:3px 6px;color:#5a6270">%s</td>'
+                '<td align="right" style="padding:3px 6px;color:%s">%s</td>'
+                '<td align="right" style="padding:3px 0 3px 6px;color:%s">%s</td>'
+                '<td align="right" style="padding:3px 0 3px 10px">%s</td>'
+                '<td align="right" style="padding:3px 0 3px 6px">%s</td>'
+                '</tr>' % (nc, r.ticker, html.escape(names.get(r.ticker, "")),
+                           _f(r.spot), _f(r.range_low), _f(r.range_high),
+                           tc, _f(r.trade), nc, _f(r.trend),
+                           _z_cell(r.vol_z_1m), _z_cell(r.vol_z_3m)))
+
+    counts = df["signal"].value_counts().to_dict()
+    chips = "".join(
+        '<span style="display:inline-block;background:%s22;color:%s;border:1px solid %s55;'
+        'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0">'
+        '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s.title(),
+                          counts.get(s, 0))
+        for s in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT))
+
+    return """<div style="background:#f4f5f7;padding:22px 0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:100%%;background:#fff;
+border:1px solid #e0e3e8;border-radius:10px;padding:26px 30px">
+
+<tr><td style="padding-bottom:4px">
+<div style="font-size:21px;font-weight:750;color:#111;letter-spacing:-.2px">Macro Risk Range Signals</div>
+<div style="color:#8b94a5;font-size:13px;margin-top:3px">%s &middot; %s &middot;
+levels for the next session off the %s close</div>
+</td></tr>
+<tr><td style="padding:12px 0 2px">%s</td></tr>
+%s
+%s
+%s
+
+<tr><td style="padding:26px 0 6px;border-top:1px solid #e6e8ec">
+<div style="font-weight:700;font-size:12px;color:#8b94a5;letter-spacing:.06em">FULL LIST</div>
+<div style="color:#8b94a5;font-size:11.5px;margin-top:3px">
+spot &middot; range low &middot; range high &middot; <span style="color:#0ea37f">TRADE</span> &middot;
+<span style="color:#0ea37f">TREND</span> (green = price above the line) &middot; then the
+volume z-score vs the 1-month and vs the 3-month distribution</div>
+</td></tr>
+<tr><td><table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px">%s</table></td></tr>
+</table></td></tr></table></div>
+""" % (generated.strftime("%A, %B %d, %Y"), _universe_label(df), asof, chips,
+       _explainer(), pf, sections,
+       "".join(app))
+
+
+# --------------------------------------------------------------------- driver
+def main():
+    ap = argparse.ArgumentParser(description="Build the Macro Risk Range dashboard and newsletter.")
+    ap.add_argument("--tickers", default=None, help="override the watchlist")
+    ap.add_argument("--profile", default="hedgeye_anchor",
+                    help="range profile: hedgeye_anchor | anchor_ewma | hedgeye_vol")
+    ap.add_argument("--edge", type=float, default=S.EDGE,
+                    help='fraction of the range counted as "near the end" (default 0.15)')
+    ap.add_argument("--fresh-days", type=int, default=S.FRESH_DAYS)
+    ap.add_argument("--outdir", default=repo_path("out"))
+    ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")
+    ap.add_argument("--live", action="store_true",
+                    help="re-price against live quotes; levels stay from the last close")
+    args = ap.parse_args()
+
+    params = load_params()
+    tickers = [t.strip().upper() for t in args.tickers.split(",")] if args.tickers else None
+    df = S.run(tickers, params=params, profile=args.profile,
+               edge=args.edge, fresh_days=args.fresh_days)
+    if df.empty:
+        print("no data")
+        return 1
+    if args.live:
+        from . import live as LIVE
+        df = LIVE.reprice(df, edge=args.edge)
+        print("[live] re-priced %d of %d names at %s"
+              % (df.attrs.get("n_live", 0), len(df),
+                 df.attrs.get("live_at").strftime("%H:%M")))
+
+    eff = dict(params)
+    eff["range"] = dict(params["range"])
+    eff["range"]["active"] = args.profile
+
+    os.makedirs(args.outdir, exist_ok=True)
+    stamp = dt.date.today().isoformat()
+    paths = {
+        "dashboard": os.path.join(args.outdir, "etf_dashboard.html"),
+        "newsletter": os.path.join(args.outdir, "etf_newsletter.html"),
+        "csv": os.path.join(args.outdir, "etf_signals_%s.csv" % stamp),
+    }
+    book = P.reconcile(df, custom=args.portfolio, live=args.live)
+    with open(paths["dashboard"], "w", encoding="utf-8") as fh:
+        fh.write(render_dashboard(df, eff, book=book))
+    with open(paths["newsletter"], "w", encoding="utf-8") as fh:
+        fh.write(render_newsletter(df, eff, book=book))
+    df.to_csv(paths["csv"], index=False)
+
+    if not book.empty:
+        print("portfolio: %d open | since entry %+.2f%% | since the baseline close %+.2f%% | %s"
+              % (len(book), book["pnl_pct"].mean(), book["since_close_pct"].mean(),
+                 "  ".join("%s=%d" % kv for kv in book["action"].value_counts().items())))
+    counts = df["signal"].value_counts().to_dict()
+    print("%s | %s" % (_universe_label(df), "  ".join(
+        "%s=%d" % (k, counts.get(k, 0))
+        for k in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT))))
+    for k, v in paths.items():
+        print("wrote %s" % v)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

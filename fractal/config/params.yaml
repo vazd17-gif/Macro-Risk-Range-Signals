@@ -1,0 +1,89 @@
+meta:
+  fitted_on: '2026-08-29'
+  n_labels: 36
+  n_range_labels: 720
+  notes: lines fitted by calib/fit_lines.py against 36 published TRADE/TREND labels;
+    range fitted by calib/fit_range.py against 720 range edges traced from 16 published
+    charts (calib/extract_ranges.py)
+range:
+  active: anchor_ewma
+  spot_ewma:
+    lam: 0.88
+    m: 1.648
+    m_dn: 2.095
+    winsor_z: null
+    fit_rmse_pct: 1.77
+  anchor_ewma:
+    lam: 0.88
+    anchor_span: 5
+    m_up: 1.902
+    m_dn: 1.841
+    winsor_z: null
+    fit_rmse_pct: 1.12
+  hedgeye_anchor:
+    lam: 0.94
+    anchor_span: 5
+    m_up: 2.1
+    m_dn: 1.74
+    floor: 0.0
+    winsor_z: null
+    fit_rmse_pct: 1.225
+    note: 'RECOMMENDED Hedgeye target. Plain sigma multiplier, no volume term (volume
+      not detectable in range width on available data). Wider than the Similar Set
+      default: matches Hedgeye edges to ~0.4% median on macro, width ratio ~1.0x.'
+  hedgeye_vol:
+    lam: 0.94
+    anchor_span: 5
+    a_up: 2.0868
+    b1_up: 0.2756
+    b3_up: -0.1389
+    a_dn: 2.0967
+    b1_dn: 0.3073
+    b3_dn: -0.2026
+    w1: 21
+    w3: 63
+    winsor_z: null
+    fit_rmse_pct: 1.68
+    fit_width_ratio: 1.132
+    note: EXPERIMENTAL / NOT VALIDATED. Volume showed no measurable effect on range
+      width across the 62 clean stock/ETF edges available (only the ROC-of-1mo-volume
+      form hinted at signal, +0.26 within-ticker, n=25). Needs single-stock ranges
+      over many high-volume-variation days to confirm. Do not use as default; hedgeye_anchor
+      (plain sigma) reconstructs Hedgeye better.
+lines:
+  kind: ema
+  trade:
+    family: sma
+    window: 29
+    span: 29
+    n: 20
+    fast: 2
+    slow: 30
+    lag: 0
+    fit_rmse_pct: 0.68
+    n_labels: 9
+  trend:
+    family: ema
+    span: 64
+    window: 64
+    n: 60
+    fast: 2
+    slow: 78
+    lag: 0
+    fit_rmse_pct: 1.3
+    n_labels: 28
+  tail:
+    family: ema
+    span: 600
+    window: 600
+    n: 250
+    fast: 2
+    slow: 600
+    lag: 0
+    min_history: 750
+    fit_rmse_pct: null
+    n_labels: 0
+data:
+  source: yahoo
+  history_years: 5
+  cache_dir: cache

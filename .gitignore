@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+
+# Cached price history - re-downloaded on demand, large, and changes every day
+fractal/cache/
+
+# Run artefacts. docs/index.html is the published copy and IS tracked.
+fractal/out/logs/
+fractal/out/*.csv
+fractal/out/*.eml
+fractal/out/.last_sent
+
+# Never commit credentials. The app password lives in the Windows user
+# environment (FRACTAL_SMTP_PASS), never in the repo.
+.env
+*.secret
+
+# Third-party research. These are inputs to calibration, not part of the model:
+# Hedgeye's subscriber reports carry an explicit "may not be forwarded or otherwise
+# provided to any unauthorized party" notice, and the Similar Set newsletters and
+# charts are their product. They stay on disk so the fits can be re-run locally,
+# but they are not redistributed.
+*.pdf
+fractal/reference/charts/
+fractal/reference/hedgeye_*.csv

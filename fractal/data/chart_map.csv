@@ -1,0 +1,31 @@
+image,ticker,chart_date,note
+SimilarSetFrid_p02_11.png,VIX,2026-08-28,Volatility S&P 500 Index
+SimilarSetFrid_p03_5.png,MOVE,2026-08-28,ICE BofAML Bond Market Option Volatility
+SimilarSetFrid_p03_10.png,HYG,2026-08-28,iShares iBoxx HY Corp Bond
+SimilarSetFrid_p04_9.png,SPY,2026-08-28,SPDR S&P 500
+SimilarSetFrid_p05_5.png,IWM,2026-08-28,iShares Russell 2000
+SimilarSetFrid_p05_11.png,MAGS,2026-08-28,Roundhill Magnificent Seven
+SimilarSetFrid_p06_9.png,IGV,2026-08-28,iShares Expanded Tech-Software
+SimilarSetFrid_p07_5.png,NOW,2026-08-28,ServiceNow
+SimilarSetFrid_p08_5.png,MSFT,2026-08-28,Microsoft
+SimilarSetFrid_p08_9.png,PLTR,2026-08-28,Palantir
+SimilarSetFrid_p09_7.png,SNOW,2026-08-28,Snowflake
+SimilarSetFrid_p10_5.png,AMZN,2026-08-28,Amazon
+SimilarSetFrid_p10_9.png,XLY,2026-08-28,Consumer Discretionary SPDR
+SimilarSetFrid_p11_9.png,V,2026-08-28,Visa
+SimilarSetFrid_p12_5.png,XLV,2026-08-28,Health Care SPDR
+SimilarSetFrid_p13_5.png,NVDA,2026-08-28,NVIDIA
+SimilarSetFrid_p13_11.png,QTUM,2026-08-28,Defiance Quantum
+SimilarSetFrid_p14_11.png,XLC,2026-08-28,Communication Services SPDR
+SimilarSetFrid_p15_5.png,UUP,2026-08-28,Invesco DB USD Index Bullish
+SimilarSetFrid_p15_11.png,6B=F,2026-08-28,British Pound futures (roll)
+SimilarSetFrid_p16_9.png,6E=F,2026-08-28,Euro FX futures (roll)
+SimilarSetFrid_p17_5.png,COLO,2026-08-28,Global X MSCI Colombia
+SimilarSetFrid_p18_5.png,TLT,2026-08-28,iShares 20+ Year Treasury
+SimilarSetFrid_p19_5.png,USO,2026-08-28,United States Oil Fund
+SimilarSetFrid_p20_5.png,COM,2026-08-28,Direxion Auspice Broad Commodity
+SimilarSetFrid_p21_5.png,GLD,2026-08-28,SPDR Gold Shares
+SimilarSetFrid_p21_10.png,SLV,2026-08-28,iShares Silver Trust
+SimilarSetFrid_p22_11.png,PALL,2026-08-28,abrdn Physical Palladium
+SimilarSetFrid_p23_5.png,HECA,2026-08-28,Hedgeye Capital Allocation
+SimilarSetFrid_p24_9.png,BTC-USD,2026-08-28,Bitcoin / USD Coinbase
