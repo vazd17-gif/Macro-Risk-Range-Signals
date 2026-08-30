@@ -41,28 +41,47 @@ from ..model.range_ewma import volume_features
 # Used when the VIX is unreadable; otherwise the band is scaled -- see EDGE_BY_VIX.
 EDGE = 0.20
 
-# The band widens and narrows with the volatility regime. Being a buyer of risk is
-# cheap when the VIX is low, so the zone that counts as "at the end" can be
-# generous; as vol rises the same band would have you catching knives, so it
-# tightens, and in a genuine panic only the extreme of the range counts at all.
+# The band that counts as "at the end" of the range is set by the volatility
+# regime, and it is asymmetric: the side that opens risk and the side that sheds it
+# get different widths. Below 19 the model leans into buying -- a quarter of the
+# range counts as a buy zone while only the outer 5% counts as a place to sell. In
+# the middle it is even. Above 29 it inverts: buying needs the extreme, selling
+# triggers early.
 #
-# These thresholds are deliberately kept separate from VIX_BUCKETS. They are close
-# (19/30 against the buckets' 20/29) but they answer a different question -- how
-# wide to draw the zone, versus what regime you are in -- and collapsing them would
-# tie two decisions together that may want to move independently.
-EDGE_BY_VIX = ((19.0, 0.25),     # calm: buy the dips, a wide zone is fine
-               (30.0, 0.15),     # choppy: tighten up
-               (None, 0.05))     # panic: only the extreme counts
+# The band follows the DIRECTION OF THE ACTION, not which end of the range it sits
+# at. A breakout is a buy that happens at the high end, so it reads against the buy
+# band; a breakdown is a sell at the low end and reads against the sell band.
+EDGE_BY_VIX = ((19.0, 0.25, 0.05),    # calm: quick to buy, slow to sell
+               (29.0, 0.10, 0.10),    # chop: even-handed
+               (None, 0.05, 0.25))    # stress: slow to buy, quick to sell
+
+EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 
 
 def edge_for_vix(level):
-    """The range-edge band for a VIX level, or None if the VIX is unreadable."""
+    """(buy band, sell band) for a VIX level, or None if the VIX is unreadable."""
     if level is None or level != level:
         return None
-    for ceiling, band in EDGE_BY_VIX:
+    for ceiling, buy, sell in EDGE_BY_VIX:
         if ceiling is None or level < ceiling:
-            return band
+            return buy, sell
     return None
+
+
+def range_flags(pos, edge_buy, edge_sell):
+    """Where price sits, judged separately for buying and for selling.
+
+    Four flags rather than two, because at one moment the same price can be inside
+    the buy zone and outside the sell zone -- that asymmetry is the whole point.
+    """
+    if pos is None or pos != pos:
+        return False, False, False, False
+    return (pos <= edge_buy,          # low enough to buy
+            pos <= edge_sell,         # low enough to be a breakdown
+            pos >= 1 - edge_buy,      # high enough to be a breakout
+            pos >= 1 - edge_sell)     # high enough to short
+
+
 FRESH_DAYS = 3       # a break/reclaim counts as an event for this many sessions
 MIN_RANGE_PCT = 2.0  # below this range width an ETF is cash-like: no signals
 SETTLE_MULT = 3      # an EMA needs roughly 3x its span of history to shed its seed
@@ -113,8 +132,8 @@ def _days_since_flip(flags: pd.Series):
     return None, None          # never flipped in the available history
 
 
-def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
-             min_range_pct=MIN_RANGE_PCT):
+def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
+             fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT):
     """One name -> levels, range position, and any triggered signal.
 
     A volatility index gets levels and a direction but never a signal: you cannot
@@ -151,8 +170,10 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     recl_trade = bool(d_trade is not None and d_trade <= fresh_days and trade_bull is True)
     recl_trend = bool(d_trend is not None and d_trend <= fresh_days and trend_bull is True)
 
-    at_low = pos <= edge
-    at_high = pos >= 1 - edge
+    buy_low, sell_low, buy_high, sell_high = range_flags(pos, edge_buy, edge_sell)
+    # The reported flags are the actionable ones: the zone you would buy in, and the
+    # zone you would short in. They are what the alert strip renders.
+    at_low, at_high = buy_low, sell_high
 
     # The bar's own move, close to close. Carried so the book can show a daily P&L
     # without re-reading prices, and so the live re-pricer has something to
@@ -172,7 +193,8 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         p_hi = float(rng["range_high"].iloc[-2])
         if np.isfinite(p_lo) and np.isfinite(p_hi) and p_hi > p_lo:
             p_pos = (p_close - p_lo) / (p_hi - p_lo)
-            was_above, was_below = p_pos >= 1 - edge, p_pos <= edge
+            was_above = p_pos >= 1 - edge_buy      # yesterday's breakout zone
+            was_below = p_pos <= edge_sell        # yesterday's breakdown zone
 
     # Volume against its 1-month and 3-month baselines. Volume is lognormal and its
     # scale differs by orders of magnitude across the list, so "unusual" is measured
@@ -255,7 +277,7 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
 
     sig, why = decide(is_index(ticker), cash_like, width_pct,
                       broke_trend, broke_trade, recl_trend, recl_trade, event,
-                      at_low, at_high, trade_bull, trend_bull,
+                      buy_low, sell_low, buy_high, sell_high, trade_bull, trend_bull,
                       outside_high=bool(spot > hi), outside_low=bool(spot < lo),
                       vol_surge=vol_surge, was_above=was_above, was_below=was_below)
 
@@ -300,6 +322,10 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         "young": bool(young),
         "at_low": bool(at_low),
         "at_high": bool(at_high),
+        "buy_low": bool(buy_low),
+        "sell_low": bool(sell_low),
+        "buy_high": bool(buy_high),
+        "sell_high": bool(sell_high),
         "day_pct": day_pct,
         # Carried so the intraday re-pricer can see a break that happened on an
         # earlier close. Without them it only knows about lines crossed since the
@@ -323,7 +349,7 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
 
 
 def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
-           recl_trend, recl_trade, event, at_low, at_high,
+           recl_trend, recl_trade, event, buy_low, sell_low, buy_high, sell_high,
            trade_bull, trend_bull, outside_high=False, outside_low=False,
            vol_surge=False, was_above=False, was_below=False):
     """(signal, why) from a name's current state. The only place the ladder lives.
@@ -362,10 +388,10 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # ordinary volume is drift, and mean-reverts more often than it continues.
     # TREND still sets direction: price pressing the high while TREND is bearish is
     # a squeeze, and still reads as a short.
-    if at_high and vol_surge and trend_bull:
+    if buy_high and vol_surge and trend_bull:
         held = " and has held" if was_above else " - watch whether it holds"
         return BREAKOUT, "at the RANGE high on heavy volume%s" % held
-    if at_low and vol_surge and trend_bull is False:
+    if sell_low and vol_surge and trend_bull is False:
         held = " and has held" if was_below else " - watch whether it holds"
         return BREAKDOWN, "at the RANGE low on heavy volume%s" % held
 
@@ -376,9 +402,9 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # The direction test mirrors the trigger. Without it a name whose TREND is
     # bullish was told to cover a breakdown add that could never have been taken,
     # because BREAKDOWN requires bearish TREND in the first place.
-    if was_above and not at_high and trend_bull:
+    if was_above and not buy_high and trend_bull:
         return TRIM_LONG, "broke out but failed to hold the RANGE high - cut the breakout add"
-    if was_below and not at_low and trend_bull is False:
+    if was_below and not sell_low and trend_bull is False:
         return TRIM_SHORT, "broke down but failed to hold the RANGE low - cover the breakdown add"
 
     # A long is never opened against a bearish TREND. TREND decides whether you hold
@@ -386,11 +412,11 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # mistake as reading a spike above the range as a breakout when TREND disagrees.
     # Those names fall through to the short-side branches below, where a reclaim can
     # still produce a cover or a partial cover, and otherwise end up on the watch.
-    if at_low and trend_bull and trade_bull:
+    if buy_low and trend_bull and trade_bull:
         return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
-    if at_low and trend_bull:
+    if buy_low and trend_bull:
         return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    if at_high and (trade_bull is False or trend_bull is False):
+    if sell_high and (trade_bull is False or trend_bull is False):
         both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
                 else ("TRADE" if trade_bull is False else "TREND"))
         return ADD_SHORT, "high end of RANGE, bearish %s" % both
@@ -405,7 +431,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
 
     # Cheap, but inside a downtrend and with nothing reclaimed. Worth watching, not
     # worth owning.
-    if at_low and trend_bull is False:
+    if buy_low and trend_bull is False:
         return WATCHLIST, "at the low end but TREND is bearish - not a buy"
 
     # Through a range edge without the volume to back it. This is the weakest read
@@ -505,10 +531,14 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         vix = prices.get(yf_symbol("VIX"))
         if vix is not None and "Close" in vix and len(vix["Close"].dropna()):
             scaled = edge_for_vix(float(vix["Close"].dropna().iloc[-1]))
-        edge = scaled if scaled is not None else EDGE
+        edge = scaled if scaled is not None else (EDGE_BUY, EDGE_SELL)
         if verbose:
-            print("range edge: %.0f%% of the range%s"
-                  % (100 * edge, "" if scaled is not None else " (VIX unavailable)"))
+            print("range edge: buy %.0f%% / sell %.0f%%%s"
+                  % (100 * edge[0], 100 * edge[1],
+                     "" if scaled is not None else "  (VIX unavailable)"))
+    elif not isinstance(edge, (tuple, list)):
+        edge = (float(edge), float(edge))     # a single number pins both sides
+    edge_buy, edge_sell = edge
 
     rows, missing = [], []
     for t in tickers:
@@ -516,7 +546,8 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         if df is None or len(df) < 80:
             missing.append(t)
             continue
-        r = evaluate(t, df, params, edge=edge, fresh_days=fresh_days,
+        r = evaluate(t, df, params, edge_buy=edge_buy, edge_sell=edge_sell,
+                     fresh_days=fresh_days,
                      min_range_pct=min_range_pct)
         if r is None:
             missing.append(t)
@@ -541,7 +572,9 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         out.loc[out["asof"] < asof, "signal"] = None
         out.loc[out["asof"] < asof, "why"] = "stale data - last bar " + stale["asof"]
     out.attrs["asof"] = asof
-    out.attrs["edge"] = edge
+    out.attrs["edge"] = edge_buy
+    out.attrs["edge_buy"] = edge_buy
+    out.attrs["edge_sell"] = edge_sell
     order = {REMOVE_LONG: 0, ADD_LONG: 1, ADD_SHORT: 2, WATCHLIST: 3, COVER_SHORT: 4}
     out["_rank"] = out["signal"].map(order).fillna(9)
     # inside each bucket, the most extreme range position first

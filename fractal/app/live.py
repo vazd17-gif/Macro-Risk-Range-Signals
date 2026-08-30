@@ -129,9 +129,11 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
                 and not (np.isfinite(trade) and abs(spot - trade) <= buf)):
             crossed.append(("lost " if was_trade else "reclaimed ") + "TRADE")
 
-        # Carried from the close, not re-derived from live price.
-        at_low = bool(r.get("at_low"))
-        at_high = bool(r.get("at_high"))
+        # Carried from the close, not re-derived from live price. All four are
+        # needed because the buy and sell bands differ with the volatility regime.
+        buy_low, sell_low = bool(r.get("buy_low")), bool(r.get("sell_low"))
+        buy_high, sell_high = bool(r.get("buy_high")), bool(r.get("sell_high"))
+        at_low, at_high = buy_low, sell_high
 
         # Intraday, a "break" is a line crossed since the close rather than one
         # crossed within the last few sessions, so the crossings feed the same
@@ -154,7 +156,7 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
             100 * (hi / lo - 1) if (np.isfinite(lo) and np.isfinite(hi) and lo > 0) else 0.0,
             bt, bd, rt, rd,
             " and ".join(crossed) or (r.get("why") or ""),
-            at_low, at_high, now_trade, now_trend,
+            buy_low, sell_low, buy_high, sell_high, now_trade, now_trend,
             outside_high=bool(np.isfinite(hi) and spot > hi),
             outside_low=bool(np.isfinite(lo) and spot < lo),
             # Volume is only known to the close, so intraday a break is confirmed
