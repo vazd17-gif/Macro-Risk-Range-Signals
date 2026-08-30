@@ -58,6 +58,7 @@ CROSS_BUFFER = 0.02
 
 ADD_LONG = "ADD LONG"
 BREAKOUT = "BREAKOUT"
+BREAKDOWN = "BREAKDOWN"
 TRIM_LONG = "TRIM LONG"
 TRIM_SHORT = "TRIM SHORT"
 REMOVE_LONG = "REMOVE LONG"
@@ -126,6 +127,18 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     at_low = pos <= edge
     at_high = pos >= 1 - edge
 
+    # Whether the previous close was already outside the range, measured against
+    # that session's own edges rather than today's -- the envelope moves, so
+    # comparing yesterday's close to today's low would report breaks that never
+    # happened.
+    was_above = was_below = False
+    if len(close) > 1:
+        p_close = float(close.iloc[-2])
+        p_lo = float(rng["range_low"].iloc[-2])
+        p_hi = float(rng["range_high"].iloc[-2])
+        if np.isfinite(p_lo) and np.isfinite(p_hi):
+            was_above, was_below = p_close > p_hi, p_close < p_lo
+
     # Volume against its 1-month and 3-month baselines. Volume is lognormal and its
     # scale differs by orders of magnitude across the list, so "unusual" is measured
     # as a z-score of log volume against the same 3-month window rather than as a
@@ -186,10 +199,16 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         event = "reclaimed %s" % " and ".join(
             [n for n, b in (("TREND", recl_trend), ("TRADE", recl_trade)) if b])
 
+    # A range break counts as volume-confirmed if either baseline says so. The
+    # 3-month window is the steadier read; the 1-month catches a name whose volume
+    # has only just picked up, which is exactly the breakout case.
+    vol_surge = bool(max([z for z in (vol_z, vol_z1) if np.isfinite(z)] or [0]) >= VOL_Z)
+
     sig, why = decide(is_index(ticker), cash_like, width_pct,
                       broke_trend, broke_trade, recl_trend, recl_trade, event,
                       at_low, at_high, trade_bull, trend_bull,
-                      outside_high=bool(spot > hi))
+                      outside_high=bool(spot > hi), outside_low=bool(spot < lo),
+                      vol_surge=vol_surge, was_above=was_above, was_below=was_below)
 
     if young and sig:
         why = (why + " " if why else "") + "(short history: %d bars)" % bars
@@ -242,12 +261,16 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         "recl_trade": bool(recl_trade),
         "outside_low": bool(spot < lo),
         "outside_high": bool(spot > hi),
+        "was_above": bool(was_above),
+        "was_below": bool(was_below),
+        "vol_surge": bool(vol_surge),
     }
 
 
 def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
            recl_trend, recl_trade, event, at_low, at_high,
-           trade_bull, trend_bull, outside_high=False):
+           trade_bull, trend_bull, outside_high=False, outside_low=False,
+           vol_surge=False, was_above=False, was_below=False):
     """(signal, why) from a name's current state. The only place the ladder lives.
 
     It used to be written twice -- once against closes here and once against live
@@ -276,11 +299,31 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     if broke_trade:
         return REMOVE_LONG, event + " with TREND already bearish - exit"
 
-    # Price above the top of the range with both durations bullish is a breakout,
-    # not a reason to sell into strength. Measured on the close, so "holds there"
-    # is inherent: an intraday poke above that closes back inside does not count.
-    if outside_high and trade_bull and trend_bull:
-        return BREAKOUT, "broke out above the RANGE high, bullish TRADE and TREND"
+    # Leaving the range is the one move the range itself cannot price, so it is
+    # read separately from where price sits inside it. Two things have to be true
+    # for it to count as a break rather than a poke: it happened on the close, and
+    # it happened on volume. A range break on ordinary volume is usually noise that
+    # mean-reverts the next session; 2 sigma of volume is what says somebody meant
+    # it. TREND still decides direction, per the rest of the ladder -- price spiking
+    # above the range while TREND is bearish is a squeeze, not a breakout.
+    if outside_high and vol_surge and trend_bull:
+        held = " and has held above" if was_above else " - watch whether it holds"
+        return BREAKOUT, "broke out above the RANGE high on heavy volume%s" % held
+    if outside_low and vol_surge and trend_bull is False:
+        held = " and has stayed below" if was_below else " - watch whether it holds"
+        return BREAKDOWN, "broke down below the RANGE low on heavy volume%s" % held
+
+    # A break that closed back inside the range failed. That is worth saying rather
+    # than silently re-reading the name as an ordinary edge signal, because the
+    # failure is information about the attempt.
+    # Outside the range without the volume to back it. Not a breakout, but not
+    # nothing either -- it is the name to watch for confirmation tomorrow.
+    if outside_high and trend_bull:
+        return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
+    if was_above and not outside_high:
+        return WATCHLIST, "broke out above the RANGE but failed to hold - no action yet"
+    if was_below and not outside_low:
+        return WATCHLIST, "broke down below the RANGE but failed to hold - no action yet"
 
     if at_low and trade_bull is False and trend_bull is False:
         return WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
@@ -415,8 +458,8 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
 
 
 # Long side first, then short, each trim beside the full action it reduces.
-SIGNALS = (ADD_LONG, BREAKOUT, TRIM_LONG, REMOVE_LONG,
-           ADD_SHORT, TRIM_SHORT, COVER_SHORT, WATCHLIST)
+SIGNALS = (BREAKOUT, ADD_LONG, TRIM_LONG, REMOVE_LONG,
+           BREAKDOWN, ADD_SHORT, TRIM_SHORT, COVER_SHORT, WATCHLIST)
 
 
 def buckets(df):

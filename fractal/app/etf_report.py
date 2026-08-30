@@ -27,7 +27,8 @@ from ..data.etf_names import short_names
 # ---------------------------------------------------------------- shared bits
 SIG_STYLE = {
     S.ADD_LONG:    ("#0ea37f", "Buy - price at the low end of the RANGE with the signal still bullish"),
-    S.BREAKOUT:    ("#2ecc9a", "Add - price has broken out above the RANGE high and held, both durations bullish"),
+    S.BREAKOUT:    ("#2ecc9a", "Add long - closed above the RANGE high on heavy volume, TREND bullish"),
+    S.BREAKDOWN:   ("#c0392b", "Add short - closed below the RANGE low on heavy volume, TREND bearish"),
     S.TRIM_LONG:   ("#d9a441", "Trim - TRADE has broken while TREND still holds; reduce, do not exit"),
     S.TRIM_SHORT:  ("#d9a441", "Trim the short - TRADE reclaimed while TREND still bearish; buy back some"),
     S.REMOVE_LONG: ("#ef5350", "Sell - has broken TRADE and/or TREND"),
@@ -651,8 +652,9 @@ def render_newsletter(df, params, generated=None, book=None):
                     "Price is at or near the LOW end of the Risk Range and the signal is "
                     "bullish TRADE and/or TREND.", b[S.ADD_LONG], "long", names),
         _nl_section("BREAKOUT", SIG_STYLE[S.BREAKOUT][0],
-                    "Price has broken out above the HIGH end of the Risk Range and held "
-                    "there, with both durations bullish. Add to the position.",
+                    "Closed ABOVE the high end of the Risk Range on heavy volume with "
+                    "TREND bullish. Add long. Volume is what separates a breakout from a "
+                    "poke - watch whether it holds above tomorrow.",
                     b[S.BREAKOUT], "event", names),
         _nl_section("TRIM LONG", SIG_STYLE[S.TRIM_LONG][0],
                     "TRADE has broken while TREND still holds. Reduce the position to lock "
@@ -667,6 +669,10 @@ def render_newsletter(df, params, generated=None, book=None):
                     "Price is at or near the HIGH end of the Risk Range and the signal is "
                     "bearish TRADE and/or TREND. Short, or avoid if long-only.",
                     b[S.ADD_SHORT], "short", names),
+        _nl_section("BREAKDOWN", SIG_STYLE[S.BREAKDOWN][0],
+                    "Closed BELOW the low end of the Risk Range on heavy volume with TREND "
+                    "bearish. Add short. Watch whether it stays below tomorrow.",
+                    b[S.BREAKDOWN], "event", names),
         _nl_section("TRIM SHORT", SIG_STYLE[S.TRIM_SHORT][0],
                     "TRADE has been reclaimed while TREND is still bearish. Buy back some "
                     "of the short - reduce it, do not close it.",

@@ -31,7 +31,7 @@ import os
 import urllib.parse
 import urllib.request
 
-from .signals import (ADD_LONG, ADD_SHORT, BREAKOUT, COVER_SHORT, REMOVE_LONG,
+from .signals import (ADD_LONG, ADD_SHORT, BREAKDOWN, BREAKOUT, COVER_SHORT, REMOVE_LONG,
                       TRIM_LONG, TRIM_SHORT, vol_read)
 
 STATE = ("out", ".alerted")
@@ -47,6 +47,7 @@ DIGEST_AT = 4
 TAGS = {
     ADD_LONG:     "green_circle",
     BREAKOUT:     "rocket",
+    BREAKDOWN:    "bangbang",
     TRIM_LONG:    "orange_circle",
     REMOVE_LONG:  "red_circle",
     ADD_SHORT:    "orange_circle",

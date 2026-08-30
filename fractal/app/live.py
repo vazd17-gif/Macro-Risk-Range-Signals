@@ -155,7 +155,14 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
             bt, bd, rt, rd,
             " and ".join(crossed) or (r.get("why") or ""),
             at_low, at_high, now_trade, now_trend,
-            outside_high=bool(np.isfinite(hi) and spot > hi))
+            outside_high=bool(np.isfinite(hi) and spot > hi),
+            outside_low=bool(np.isfinite(lo) and spot < lo),
+            # Volume is only known to the close, so intraday a break is confirmed
+            # by the last completed session's volume. A name breaking out on heavy
+            # volume today reads as unconfirmed until tonight, which is the
+            # conservative direction to be wrong in.
+            vol_surge=bool(r.get("vol_surge")),
+            was_above=bool(r.get("outside_high")), was_below=bool(r.get("outside_low")))
 
         # With nothing crossed and no edge read, the name keeps whatever the daily
         # run concluded -- a signal earned on closes does not evaporate because
