@@ -27,7 +27,7 @@ KWEB, KWT, LIT, LQD, MAGS, MTBA, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
 PPLT, PSP, PSCU, PSCC, PSCD, PSCH, QQQ, QTUM, RSP, SCJ, SHY, SIL, SILJ,
 SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, TBIL, TAN, TLT, TUR, UAE,
 UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF, XLI, XLK, XLP, XLU,
-XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
+XLE, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 """
 
 # Single names: the highest daily dollar-volume S&P 500 constituents, plus any
@@ -64,7 +64,7 @@ def is_index(ticker):
 GROUPS = {
     "us_equity":    ["SPY", "QQQ", "RSP", "IWM", "IWC", "IWO", "MAGS", "SPLV", "SPMO",
                      "XLG", "GRNY"],
-    "us_sector":    ["XLF", "XLI", "XLK", "XLP", "XLU", "XLRE", "XLV", "XLY", "XRT",
+    "us_sector":    ["XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLRE", "XLV", "XLY", "XRT",
                      "XTL", "XHE", "XOP", "ITA", "ITB", "IAK", "IHF", "PJP", "KRE",
                      "JETS", "OIH", "PSP", "DESK", "FUTY"],
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],

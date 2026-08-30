@@ -333,28 +333,22 @@ Phone alerts via ntfy -- free, no account, works on iPhone and Android.
 
 # One of each colour, so the whole tag vocabulary can be checked on the phone in a
 # single run rather than waiting for the market to produce each kind.
+#
+# The ticker is deliberately not a real one and every sample says TEST. A styling
+# demo that used real symbols and plausible levels once arrived on the phone looking
+# exactly like a live alert, and contradicted the model while doing it -- a test
+# notification has to be unmistakable at a glance or it is worse than no test.
 def _samples():
     nl = chr(10)
+    body = ("TEST - not a real signal" + nl +
+            "Spot 100.00  +0.0% today" + nl +
+            "Range 98.00 - 102.00  50% in" + nl +
+            "TRADE 99.00  TREND 97.00")
     return [
-        ("SPY ADD LONG",
-         "Spot 769.38  -1.2% today" + nl +
-         "Range 759.32 - 781.40  8% in" + nl +
-         "TRADE 760.53  TREND 751.02" + nl +
-         "low end of RANGE, bullish TRADE and TREND", False, TAGS[ADD_LONG]),
-        ("QQQ lost TREND",
-         "Spot 611.20  -2.1% today" + nl +
-         "Range 604.80 - 628.40  27% in" + nl +
-         "TRADE 615.90  TREND 613.05", True, TAGS["lost"]),
-        ("XLE ADD SHORT",
-         "Spot 96.44  +1.4% today" + nl +
-         "Range 92.10 - 96.80  93% in" + nl +
-         "TRADE 95.02  TREND 97.31" + nl +
-         "high end of RANGE, bearish TREND", False, TAGS[ADD_SHORT]),
-        ("NVDA COVER SHORT",
-         "Spot 217.54  +3.2% today" + nl +
-         "Range 205.10 - 224.60  64% in" + nl +
-         "TRADE 214.80  TREND 209.95" + nl +
-         "reclaimed TRADE", True, TAGS[COVER_SHORT]),
+        ("TEST ADD LONG",     body, False, TAGS[ADD_LONG]),
+        ("TEST REMOVE LONG",  body, True,  TAGS[REMOVE_LONG]),
+        ("TEST ADD SHORT",    body, False, TAGS[ADD_SHORT]),
+        ("TEST COVER SHORT",  body, True,  TAGS[COVER_SHORT]),
     ]
 
 
