@@ -5,6 +5,9 @@ __pycache__/
 # Cached price history - re-downloaded on demand, large, and changes every day
 fractal/cache/
 
+# The trim log is a record of this machine's runs, like the position book.
+fractal/data/portfolio_trims.csv
+
 # Run artefacts. docs/index.html is the published copy and IS tracked.
 fractal/out/logs/
 fractal/out/*.csv

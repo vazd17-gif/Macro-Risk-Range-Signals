@@ -44,6 +44,22 @@ SIG_STYLE = {
 BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
 
 
+def _trim_note(pos, dark=True):
+    """What a reduction called today was worth, or "" if none was.
+
+    Shown against the position rather than replacing it: the lot stays open and
+    keeps being measured from its original entry, so this is a second number, not a
+    correction to the first.
+    """
+    act = getattr(pos, "trim_action", None)
+    pnl = getattr(pos, "trim_pnl_pct", None)
+    if not act or pnl is None or pnl != pnl:
+        return ""
+    col = ("#0ea37f" if pnl >= 0 else "#ef5350") if dark else ("#0b8f6e" if pnl >= 0 else "#d33")
+    return ('<span style="color:%s;font-weight:650">%s today at %s &middot; %+.2f%%</span>'
+            % (col, html.escape(act), _f(getattr(pos, "trim_price", float("nan"))), pnl))
+
+
 # A volatility index is coloured by what it means for everything else, not by which
 # side of its own TREND it sits on -- falling vol is the green case.
 STANCE_COL = {"supportive": "#0ea37f", "risk_off": "#ef5350", "mixed": "#d9a441"}
@@ -502,6 +518,7 @@ def render_dashboard(df, params, generated=None, book=None):
                 '<td data-v="%.4f" style="color:%s">%+.2f%%</td>'
                 '<td>%s</td>'
                 '<td class="l"><span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span></td>'
+                '<td class="l">%s</td>'
                 '<td class="l why">%s</td></tr>'
                 % (b.ticker, sidec, b.side, b.entry_date,
                    b.entry_price, _f(b.entry_price),
@@ -509,7 +526,8 @@ def render_dashboard(df, params, generated=None, book=None):
                    b.pnl_pct, pc, b.pnl_pct,
                    b.day_pct, tc, b.day_pct,
                    days,
-                   ac, ac, ac, html.escape(b.action), html.escape(b.action_why or "")))
+                   ac, ac, ac, html.escape(b.action), _trim_note(b),
+                   html.escape(b.action_why or "")))
         pf_html = (
             '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Portfolio '
             '<span style="color:var(--dim);font-weight:400;font-size:13px">'
@@ -519,7 +537,7 @@ def render_dashboard(df, params, generated=None, book=None):
             % (len(book), book["pnl_pct"].mean(), book["day_pct"].mean(),
                "".join("<th>%s</th>" % h for h in
                        ["Position", "Side", "Added", "Entry",
-                        "Spot", "P&L", "Today", "Days", "Action", "Why"]),
+                        "Spot", "P&L", "Today", "Days", "Action", "Reduced", "Why"]),
                "".join(prow)))
 
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
@@ -699,7 +717,7 @@ def render_newsletter(df, params, generated=None, book=None):
                 '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">'
                 'entry <b>%s</b> &rarr; spot <b>%s</b>'
                 '<span style="color:#8b94a5"> &middot; %s day%s held &middot; '
-                'today %+.2f%%</span></div>'
+                'today %+.2f%%</span>%s</div>'
                 '<div style="margin-top:4px"><span style="background:%s;color:#fff;font-size:11px;'
                 'font-weight:700;padding:2px 7px;border-radius:3px">%s</span>'
                 '<span style="color:#5a6270;font-size:12.5px"> &nbsp;%s</span></div></td></tr>'
@@ -711,6 +729,8 @@ def render_newsletter(df, params, generated=None, book=None):
                    ("%d" % pos.days_held) if np.isfinite(pos.days_held) else "&ndash;",
                    "" if pos.days_held == 1 else "s",
                    pos.day_pct,
+                   ('<div style="margin-top:3px">%s</div>' % _trim_note(pos, dark=False))
+                   if _trim_note(pos, dark=False) else "",
                    ac, html.escape(pos.action), html.escape(pos.action_why or "holding")))
         pf = ('<tr><td style="padding:20px 0 6px">'
               '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
