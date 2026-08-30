@@ -313,7 +313,12 @@ def render_dashboard(df, params, generated=None, book=None):
                            h.intraday, _f(h.spot), _trend_col(h.trend_bull)))
     seen = {a[1] for a in alerts}
     for h in df.itertuples():
-        if h.ticker in seen or getattr(h, "cash_like", False):
+        # Indices are carried for context and never raise a position, so an edge on
+        # one is not an alert. The signal engine and the phone already exclude them;
+        # only this strip did not, and a "VIX at the low end" chip would read as an
+        # instruction to buy something that cannot be bought.
+        if (h.ticker in seen or getattr(h, "cash_like", False)
+                or getattr(h, "is_index", False)):
             continue
         if getattr(h, "at_low", False):
             alerts.append((1, h.ticker, BULL, "at the low end", _f(h.spot),
