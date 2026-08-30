@@ -162,7 +162,12 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
             # volume today reads as unconfirmed until tonight, which is the
             # conservative direction to be wrong in.
             vol_surge=bool(r.get("vol_surge")),
-            was_above=bool(r.get("outside_high")), was_below=bool(r.get("outside_low")))
+            # The hold test asks whether an earlier break is still holding, and
+            # intraday that question has not changed: the levels are still the ones
+            # the daily run computed, so its own was_above/was_below carry over and
+            # only `at_high` is re-read against live spot. Deriving the flag from
+            # the daily signal instead lost the failed-break state a day early.
+            was_above=bool(r.get("was_above")), was_below=bool(r.get("was_below")))
 
         # With nothing crossed and no edge read, the name keeps whatever the daily
         # run concluded -- a signal earned on closes does not evaporate because
