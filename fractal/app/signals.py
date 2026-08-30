@@ -38,7 +38,31 @@ from ..model.range_ewma import volume_features
 # "Near or at" the end of the range: the outer fifth. Hedgeye's own ETF Pro adds
 # sat a median 0.17 into the range at the session low, so an outer-15% band was
 # tighter than the thing it is meant to reproduce and missed adds they were making.
+# Used when the VIX is unreadable; otherwise the band is scaled -- see EDGE_BY_VIX.
 EDGE = 0.20
+
+# The band widens and narrows with the volatility regime. Being a buyer of risk is
+# cheap when the VIX is low, so the zone that counts as "at the end" can be
+# generous; as vol rises the same band would have you catching knives, so it
+# tightens, and in a genuine panic only the extreme of the range counts at all.
+#
+# These thresholds are deliberately kept separate from VIX_BUCKETS. They are close
+# (19/30 against the buckets' 20/29) but they answer a different question -- how
+# wide to draw the zone, versus what regime you are in -- and collapsing them would
+# tie two decisions together that may want to move independently.
+EDGE_BY_VIX = ((19.0, 0.25),     # calm: buy the dips, a wide zone is fine
+               (30.0, 0.15),     # choppy: tighten up
+               (None, 0.05))     # panic: only the extreme counts
+
+
+def edge_for_vix(level):
+    """The range-edge band for a VIX level, or None if the VIX is unreadable."""
+    if level is None or level != level:
+        return None
+    for ceiling, band in EDGE_BY_VIX:
+        if ceiling is None or level < ceiling:
+            return band
+    return None
 FRESH_DAYS = 3       # a break/reclaim counts as an event for this many sessions
 MIN_RANGE_PCT = 2.0  # below this range width an ETF is cash-like: no signals
 SETTLE_MULT = 3      # an EMA needs roughly 3x its span of history to shed its seed
@@ -455,9 +479,14 @@ def line_band(range_low, range_high):
     return CROSS_BUFFER * (range_high - range_low)
 
 
-def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
+def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT, verbose=True):
-    """Evaluate the ETF watchlist. Returns a DataFrame, most actionable first."""
+    """Evaluate the ETF watchlist. Returns a DataFrame, most actionable first.
+
+    `edge` defaults to the VIX-scaled band: one band governs the whole list, because
+    the volatility regime is a property of the market rather than of any one name.
+    Pass a number to pin it.
+    """
     params = dict(params or load_params())
     if profile:
         params["range"] = dict(params["range"])
@@ -467,6 +496,19 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
     # own ticker. Fetch by feed symbol, report by display ticker.
     feed = {t: yf_symbol(t) for t in tickers}
     prices = load_prices(sorted(set(feed.values())), params=params, verbose=verbose)
+
+    # One band for the whole list, set by the VIX. Falls back to the fixed EDGE if
+    # the VIX is missing from this run -- a scan of three ETFs should not silently
+    # change its own definition of "at the end" because it happened to omit it.
+    scaled = None
+    if edge is None:
+        vix = prices.get(yf_symbol("VIX"))
+        if vix is not None and "Close" in vix and len(vix["Close"].dropna()):
+            scaled = edge_for_vix(float(vix["Close"].dropna().iloc[-1]))
+        edge = scaled if scaled is not None else EDGE
+        if verbose:
+            print("range edge: %.0f%% of the range%s"
+                  % (100 * edge, "" if scaled is not None else " (VIX unavailable)"))
 
     rows, missing = [], []
     for t in tickers:
@@ -499,6 +541,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
         out.loc[out["asof"] < asof, "signal"] = None
         out.loc[out["asof"] < asof, "why"] = "stale data - last bar " + stale["asof"]
     out.attrs["asof"] = asof
+    out.attrs["edge"] = edge
     order = {REMOVE_LONG: 0, ADD_LONG: 1, ADD_SHORT: 2, WATCHLIST: 3, COVER_SHORT: 4}
     out["_rank"] = out["signal"].map(order).fillna(9)
     # inside each bucket, the most extreme range position first

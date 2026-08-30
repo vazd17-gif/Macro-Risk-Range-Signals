@@ -78,7 +78,13 @@ def _universe_label(df):
     return ", ".join(parts) or "%d names" % len(df)
 
 
-def _vix_meter(idx, email=False):
+def _band_note(band):
+    """The range-edge band in force, which the VIX level sets."""
+    return ("" if not band else
+            " &middot; range edge scaled to the outer <b>%.0f%%</b>" % (100 * band))
+
+
+def _vix_meter(idx, email=False, band=None):
     """The three VIX buckets as a lit meter, with the live one filled.
 
     Rendered as a meter rather than a sentence because the bucket is a severity
@@ -100,8 +106,11 @@ def _vix_meter(idx, email=False):
     if not live:
         return ""
 
+    # `rng` is the bucket's own "9-19" label. It is deliberately not called `band`:
+    # that name belongs to the range-edge fraction this function also reports, and
+    # the two were quietly colliding.
     cells = []
-    for _ceiling, name, band, note, stance in S.VIX_BUCKETS:
+    for _ceiling, name, rng, note, stance in S.VIX_BUCKETS:
         col = STANCE_COL.get(stance, "#8b94a5")
         on = name == live
         if on:
@@ -110,8 +119,8 @@ def _vix_meter(idx, email=False):
         else:
             style = ("background:transparent;border:1px solid %s44;color:%s99"
                      % (col, col))
-            sub, subcol = band, "%s88" % col
-        cells.append((style, name, band, sub, subcol, on))
+            sub, subcol = rng, "%s88" % col
+        cells.append((style, name, rng, sub, subcol, on))
 
     if email:
         tds = "".join(
@@ -120,26 +129,27 @@ def _vix_meter(idx, email=False):
             '<div style="font-size:11px;font-weight:700;letter-spacing:.05em">%s'
             '<span style="font-weight:400;opacity:.75"> &nbsp;%s</span></div>'
             '<div style="font-size:11px;margin-top:2px;color:%s">%s</div></td>'
-            '<td width="6"></td>' % (style, name, band, subcol, sub if on else "&nbsp;")
-            for style, name, band, sub, subcol, on in cells)
+            '<td width="6"></td>' % (style, name, rng, subcol, sub if on else "&nbsp;")
+            for style, name, rng, sub, subcol, on in cells)
         return ('<div style="font-size:12.5px;color:#5a6270;margin-bottom:6px">'
-                'VIX <b style="color:#111;font-size:15px">%.2f</b></div>'
+                'VIX <b style="color:#111;font-size:15px">%.2f</b>%s</div>'
                 '<table width="100%%" cellpadding="0" cellspacing="0"><tr>%s</tr></table>'
-                % (lvl, tds))
+                % (lvl, _band_note(band), tds))
 
     segs = "".join(
         '<div style="flex:1 1 0;%s;border-radius:7px;padding:7px 10px">'
         '<div style="font-size:11px;font-weight:700;letter-spacing:.05em">%s'
         '<span style="font-weight:400;opacity:.7"> &nbsp;%s</span></div>'
         '<div style="font-size:11px;margin-top:2px;color:%s">%s</div></div>'
-        % (style, name, band, subcol, sub if on else "&nbsp;")
-        for style, name, band, sub, subcol, on in cells)
+        % (style, name, rng, subcol, sub if on else "&nbsp;")
+        for style, name, rng, sub, subcol, on in cells)
     return ('<div style="color:var(--dim);font-size:12.5px;margin-bottom:7px">'
-            'VIX <b style="color:var(--fg);font-size:15px">%.2f</b></div>'
-            '<div style="display:flex;gap:7px;margin-bottom:11px">%s</div>' % (lvl, segs))
+            'VIX <b style="color:var(--fg);font-size:15px">%.2f</b>%s</div>'
+            '<div style="display:flex;gap:7px;margin-bottom:11px">%s</div>'
+            % (lvl, _band_note(band), segs))
 
 
-def _vol_regime(idx):
+def _vol_regime(idx, band=None):
     """One-line read of the volatility complex.
 
     Falling volatility is supportive for risk assets, so bearish TRADE and TREND on
@@ -451,7 +461,7 @@ def render_dashboard(df, params, generated=None, book=None):
     idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
     vol_html = ""
     if len(idx):
-        note, ncol = _vol_regime(idx)
+        note, ncol = _vol_regime(idx, df.attrs.get("edge"))
         cells = "".join(
             '<div style="flex:1 1 220px;background:#11151b;border:1px solid var(--line);'
             'border-radius:8px;padding:10px 13px">'
@@ -465,7 +475,7 @@ def render_dashboard(df, params, generated=None, book=None):
         vol_html = (
             '<h2 style="font-size:15px;margin:6px 0 9px;letter-spacing:-.01em">'
             'Market volatility</h2>'
-            + _vix_meter(idx) +
+            + _vix_meter(idx, band=df.attrs.get("edge")) +
             '<div style="color:%s;font-size:12.5px;margin-bottom:10px">%s</div>'
             '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px">%s</div>'
             % (ncol, note, cells))
@@ -773,7 +783,7 @@ def render_newsletter(df, params, generated=None, book=None):
     # acting on, so it belongs above them, not in an appendix.
     idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
     if len(idx):
-        note, ncol = _vol_regime(idx)
+        note, ncol = _vol_regime(idx, df.attrs.get("edge"))
         items = "".join(
             '<tr><td style="padding:8px 0;border-bottom:1px solid #e6e8ec">'
             '<div><span style="font-weight:700;color:#111">%s</span>'
@@ -788,7 +798,7 @@ def render_newsletter(df, params, generated=None, book=None):
             '<span style="display:inline-block;background:#334155;color:#fff;font-size:12px;'
             'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
             'MARKET VOLATILITY</span>'
-            '<div style="margin-top:9px">' + _vix_meter(idx, email=True) + '</div>'
+            '<div style="margin-top:9px">' + _vix_meter(idx, email=True, band=df.attrs.get("edge")) + '</div>'
             '<div style="color:%s;font-size:12.5px;margin-top:7px">%s</div></td></tr>'
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
             % (ncol, note, items)) + sections
@@ -862,8 +872,8 @@ def main():
     ap.add_argument("--tickers", default=None, help="override the watchlist")
     ap.add_argument("--profile", default="hedgeye_anchor",
                     help="range profile: hedgeye_anchor | anchor_ewma | hedgeye_vol")
-    ap.add_argument("--edge", type=float, default=S.EDGE,
-                    help='fraction of the range counted as "near the end" (default 0.20)')
+    ap.add_argument("--edge", type=float, default=None,
+                    help='fraction of the range counted as "near the end" (default: scaled by the VIX)')
     ap.add_argument("--fresh-days", type=int, default=S.FRESH_DAYS)
     ap.add_argument("--outdir", default=repo_path("out"))
     ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")
