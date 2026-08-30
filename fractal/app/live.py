@@ -24,12 +24,6 @@ import pandas as pd
 from . import signals as S
 from ..data.etf_universe import yf_symbol
 
-# How far past a line price must travel before the move counts as a crossing,
-# as a fraction of the RANGE width. At 2% of a typical 3%-wide range this is
-# roughly 0.06% of spot: far enough to ignore quote jitter, close enough that a
-# genuine break is flagged on the same bar it happens.
-CROSS_BUFFER = 0.02
-
 
 def quotes(tickers, chunk=60):
     """{display ticker: last price}. Missing names are simply absent, never guessed.
@@ -98,8 +92,7 @@ def reprice(df, px=None, edge=S.EDGE):
         # alert for a 0.003% move. So a crossing only counts once price has cleared
         # the line by a real distance -- scaled to the range width, because a tenth
         # of a percent is a long way in LQD and nothing at all in ARKQ.
-        buf = (CROSS_BUFFER * (hi - lo)
-               if (np.isfinite(lo) and np.isfinite(hi) and hi > lo) else 0.0)
+        buf = S.line_band(lo, hi)
         crossed = []
         for name, before, after, level in (("TREND", was_trend, now_trend, trend),
                                            ("TRADE", was_trade, now_trade, trade)):
@@ -143,6 +136,9 @@ def reprice(df, px=None, edge=S.EDGE):
         out.at[i, "trend_bull"] = now_trend
         out.at[i, "at_low"] = bool(at_low)
         out.at[i, "at_high"] = bool(at_high)
+        line_txt, line_dir = S.on_line(spot, trade, trend, lo, hi)
+        out.at[i, "on_line"] = line_txt
+        out.at[i, "on_line_dir"] = line_dir
         out.at[i, "pct_to_low"] = 100 * (lo / spot - 1) if np.isfinite(lo) else np.nan
         out.at[i, "pct_to_high"] = 100 * (hi / spot - 1) if np.isfinite(hi) else np.nan
         out.at[i, "pct_to_trade"] = 100 * (trade / spot - 1) if np.isfinite(trade) else np.nan

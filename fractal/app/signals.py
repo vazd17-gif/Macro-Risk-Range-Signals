@@ -42,6 +42,13 @@ SETTLE_MULT = 3      # an EMA needs roughly 3x its span of history to shed its s
 VOL_W1, VOL_W3 = 21, 63     # 1-month and 3-month volume baselines (TRADE / TREND)
 VOL_Z = 2.0          # |z| on log volume beyond which a session counts as an outlier
 
+# How far past a duration line price must travel before the move counts as a
+# crossing rather than jitter, as a fraction of the RANGE width. Scaling to the
+# range rather than to a flat percentage is what makes one number work across the
+# list: it lands near 0.05% of spot on equity ETFs, where a move that small is
+# noise, and under it on fixed income, where the same move is real.
+CROSS_BUFFER = 0.02
+
 # Instruments whose whole Risk Range is narrower than MIN_RANGE_PCT do not move
 # enough for these rules to mean anything - a T-bill fund "breaking TRADE" by five
 # basis points is not a sell. The Hedgeye validation made the same point from the
@@ -201,6 +208,8 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     if young and sig:
         why = (why + " " if why else "") + "(short history: %d bars)" % bars
 
+    _line_txt, _line_dir = on_line(spot, trade, trend, lo, hi)
+
     return {
         "ticker": ticker,
         "group": group_of(ticker),
@@ -239,9 +248,45 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         "young": bool(young),
         "at_low": bool(at_low),
         "at_high": bool(at_high),
+        "on_line": _line_txt,
+        "on_line_dir": _line_dir,
         "outside_low": bool(spot < lo),
         "outside_high": bool(spot > hi),
     }
+
+
+def line_band(range_low, range_high):
+    """Distance from a duration line inside which price counts as sitting on it."""
+    if not (np.isfinite(range_low) and np.isfinite(range_high)) or range_high <= range_low:
+        return 0.0
+    return CROSS_BUFFER * (range_high - range_low)
+
+
+def on_line(spot, trade, trend, range_low, range_high):
+    """("about to break TRADE", "bearish") for a name resting on a line, else ("", "").
+
+    Nothing has happened to these names yet, which is what separates them from a
+    crossing -- but they are the shortest list of names that could produce one
+    before the close, so they are worth surfacing.
+
+    The direction is the break that would follow if price kept going the way it is
+    pointing, which is the opposite of the side it currently sits on: a name just
+    above its TRADE line breaks bearishly if it carries on through, and one just
+    below reclaims it bullishly. Where a name rests on both lines pointing opposite
+    ways, neither read is available and it is reported as mixed.
+    """
+    band = line_band(range_low, range_high)
+    if not band:
+        return "", ""
+    hits, ways = [], set()
+    for name, lvl in (("TRADE", trade), ("TREND", trend)):
+        if np.isfinite(lvl) and abs(spot - lvl) <= band:
+            hits.append(name)
+            ways.add("bearish" if spot >= lvl else "bullish")
+    if not hits:
+        return "", ""
+    way = ways.pop() if len(ways) == 1 else "mixed"
+    return "about to break " + " and ".join(hits), way
 
 
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
