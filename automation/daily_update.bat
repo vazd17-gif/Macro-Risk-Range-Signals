@@ -26,7 +26,7 @@ if not exist "docs" mkdir "docs"
 copy /Y "fractal\out\etf_dashboard.html" "docs\index.html" >nul
 git rev-parse --is-inside-work-tree >nul 2>&1
 if not errorlevel 1 (
-  git add docs/index.html >nul 2>&1
+  git add docs >nul 2>&1
   git diff --cached --quiet || git commit -q -m "daily: levels off the latest close" >> "%LOG%" 2>&1
   git push -q >> "%LOG%" 2>&1
 )

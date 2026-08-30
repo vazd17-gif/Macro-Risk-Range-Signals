@@ -102,6 +102,20 @@ def _weekday_label(datestr):
 
 REFRESH_SECONDS = 300      # the live page reloads itself every 5 minutes
 
+# Installability. With these, "Add to Home Screen" gives a real app icon and a
+# standalone window with no browser chrome. The service worker deliberately caches
+# nothing -- an offline copy of the dashboard would show stale levels, which is
+# worse than showing nothing -- but registering one is what makes Android offer the
+# install prompt at all.
+PWA_HEAD = """<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0f13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Risk Range">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){
+navigator.serviceWorker.register("sw.js").catch(function(){});});}</script>"""
+
 VOL_COLOUR = {"surge": "#d9a441", "dry": "#5c9ded"}
 
 # Columns dropped on a narrow screen -- reference detail rather than decisions.
@@ -399,6 +413,9 @@ def render_dashboard(df, params, generated=None, book=None):
         refresh = ""
 
     return """<title>Macro Risk Range Signals</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+""" + PWA_HEAD + """
 %s
 <style>%s</style>
 <div class="wrap">
@@ -728,6 +745,8 @@ def main():
     ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")
     ap.add_argument("--live", action="store_true",
                     help="re-price against live quotes; levels stay from the last close")
+    ap.add_argument("--push", action="store_true",
+                    help="push new alerts to the phone (see fractal.app.alerts --setup)")
     args = ap.parse_args()
 
     params = load_params()
@@ -772,6 +791,12 @@ def main():
         for k in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT))))
     for k, v in paths.items():
         print("wrote %s" % v)
+
+    # Pushed last, and only from the written state, so a failure to render never
+    # results in a phone alert for a report that does not exist.
+    if args.push:
+        from . import alerts as A
+        A.notify(df, asof=str(df.attrs.get("asof", stamp)))
     return 0
 
 

@@ -64,6 +64,8 @@ def main():
                 "%s=%d" % (k, c.get(k, 0)) for k in
                 (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT))))
             print("wrote %s\nwrote %s" % (dash, news))
+            from fractal.app import alerts as A
+            A.notify(etf, asof=str(etf.attrs.get("asof", stamp)), seed=True)
     return 0
 
 

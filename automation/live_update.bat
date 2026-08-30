@@ -10,7 +10,7 @@ for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') d
 if not exist "fractal\out\logs" mkdir "fractal\out\logs"
 set LOG=fractal\out\logs\live_%TODAY%.log
 
-python -m fractal.app.etf_report --live >> "%LOG%" 2>&1
+python -m fractal.app.etf_report --live --push >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo LIVE REFRESH FAILED %TIME% >> "%LOG%" 2>&1
   endlocal
@@ -25,7 +25,7 @@ copy /Y "fractal\out\etf_dashboard.html" "docs\index.html" >nul
 REM Publish to GitHub Pages when this is a git repo with a remote.
 git rev-parse --is-inside-work-tree >nul 2>&1
 if not errorlevel 1 (
-  git add docs/index.html >nul 2>&1
+  git add docs >nul 2>&1
   git diff --cached --quiet || git commit -q -m "live: dashboard %TODAY% %TIME%" >> "%LOG%" 2>&1
   git push -q >> "%LOG%" 2>&1
 )
