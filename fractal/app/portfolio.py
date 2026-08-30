@@ -19,6 +19,14 @@ Positions live in `data/portfolio.csv`, one row per lot:
 Closing a lot stamps status/exit rather than deleting the row, so the book keeps
 its own history.
 
+The book is driven by the signals rather than kept by hand: `sync` opens a position
+for every BUY and SELL SHORT, closes it when the ladder says SELL or COVER SHORT,
+and flips it when the signal turns the other way. Several opens a day is expected
+and fine -- the same ladder takes them off again when a line breaks. Trims are the
+one action it does not execute: with no position sizing there is nothing to sell
+some of, and treating a trim as an exit would undo the distinction between TREND
+deciding whether you hold and TRADE deciding how much.
+
 Actions are phrased as the order to place, not as a description of the position:
 
     LONG        buy / add long exposure
@@ -192,50 +200,68 @@ def _action(side, sig, at_low, at_high, event):
     return A_HOLD, ""
 
 
-# Signals that open a position on their own, and which way. A range break is the
-# one signal that arrives with its own conviction test already passed -- it needs
-# price at the edge AND two sigma of volume AND TREND agreeing -- so it is the one
-# the book acts on without being told. The edge signals are not here: ADD LONG
-# fires on a dozen names some days, and a book that opened all of them would be an
-# index fund with extra steps.
-AUTO_OPEN = {S.BREAKOUT: LONG, S.BREAKDOWN: SHORT}
+# Every signal that is an order to open, and which way. This is the whole BUY and
+# SELL SHORT side of the ladder, not just the volume breaks: a name at the low end
+# with TREND intact has met the rules, and the rules are the position. Several a
+# day is fine, because the same ladder takes them off again when a line breaks.
+AUTO_OPEN = {S.ADD_LONG: LONG, S.BREAKOUT: LONG,
+             S.ADD_SHORT: SHORT, S.BREAKDOWN: SHORT}
+
+# ...and the orders that flatten one. Trims are absent on purpose: the book has no
+# position sizing, so "sell some" has nothing to sell some of, and executing it as
+# a full exit would quietly turn every trim into the exit the ladder was rewritten
+# to avoid. They show as an action to take by hand.
+AUTO_CLOSE = {S.REMOVE_LONG: LONG, S.COVER_SHORT: SHORT}
 
 
 def sync(sig_df: pd.DataFrame, custom=None, verbose=True):
-    """Open positions for today's range breaks. Returns the rows it added.
+    """Bring the book in line with today's signals. Returns (opened, closed).
 
-    Booked at the close the signal came from, not at some later price, so entry
-    matches the bar the decision was made on.
+    Closes run before opens so a name that has flipped can come off one side and go
+    on the other in the same pass.
 
-    Deliberately not called from the intraday re-pricer: a breakout is defined on
-    the close, and opening one at 11am on a move that closes back inside would put
-    a position in the book that the model never actually signalled.
+    Booked at the close the signal came from, not at some later price, so entry and
+    exit match the bar the decision was made on. Deliberately not called from the
+    intraday re-pricer: the signals are defined on closes, and acting at 11am on a
+    move that closes back inside would put positions in the book the model never
+    signalled.
     """
     if sig_df.empty:
-        return []
+        return [], []
     held = open_positions(custom)
-    have = set(zip(held["ticker"], held["side"])) if not held.empty else set()
-    opened = []
+    have = dict(zip(held["ticker"], held["side"])) if not held.empty else {}
+    opened, closed = [], []
+
+    def _close(tk, price, why):
+        n, px = close_position(tk, price=price, date=None, custom=custom)
+        have.pop(tk, None)
+        closed.append((tk, px, why))
+        if verbose:
+            print("  closed %s at %.2f (%s)" % (tk, px, why))
+
     for r in sig_df.itertuples():
-        side = AUTO_OPEN.get(getattr(r, "signal", None))
-        if side is None or (r.ticker, side) in have:
+        sig = getattr(r, "signal", None)
+        tk, price = r.ticker, float(r.spot)
+        side_out = AUTO_CLOSE.get(sig)
+        if side_out and have.get(tk) == side_out:
+            _close(tk, price, sig)
+
+        side_in = AUTO_OPEN.get(sig)
+        if side_in is None or have.get(tk) == side_in:
             continue
-        if (r.ticker, LONG if side == SHORT else SHORT) in have:
-            if verbose:
-                print("  %s %s skipped - the opposite side is already open"
-                      % (r.ticker, side))
-            continue
-        row = add_position(r.ticker, side, price=float(r.spot),
+        if tk in have:                      # holding the other way: flip it
+            _close(tk, price, "%s - flipping to %s" % (sig, side_in))
+        row = add_position(tk, side_in, price=price,
                            date=str(getattr(r, "asof", "")) or None,
-                           notes="auto: %s" % r.signal, custom=custom)
-        have.add((r.ticker, side))
+                           notes="auto: %s" % sig, custom=custom)
+        have[tk] = side_in
         opened.append(row)
         if verbose:
-            print("  opened %s %s at %.2f (%s)" % (side, r.ticker, row["entry_price"],
-                                                   r.signal))
-    if verbose and not opened:
-        print("  no range breaks to open")
-    return opened
+            print("  opened %s %s at %.2f (%s)" % (side_in, tk, row["entry_price"], sig))
+
+    if verbose and not (opened or closed):
+        print("  book already matches the signals")
+    return opened, closed
 
 
 def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
