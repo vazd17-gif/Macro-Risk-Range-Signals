@@ -404,17 +404,21 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return COVER_SHORT, event + " - TREND reclaimed, close the short"
 
     # ---- 2. TRADE ----------------------------------------------------------
-    # TRADE decides how much. A break with TREND still bullish is a trim, not an
-    # exit -- calling it an exit overstated about a third of the sell list. With
-    # TREND already bearish there is no long left to trim, so it reads as the exit.
-    # The reclaim side mirrors it: TRADE back with TREND still bearish reduces the
-    # short, and reclaiming it once TREND has already turned closes the short out.
+    # A broken line is a full action, whichever line it is. TRADE breaking to the
+    # downside inside a bullish TREND takes the position off and waits for the model
+    # to say when to buy it back -- or to short it, if TREND goes too. The reclaim
+    # side mirrors that: TRADE taken back inside a bearish TREND closes the short.
+    #
+    # Partial actions belong to the range tier instead, which is the cleaner split:
+    # a line either holds or it does not, while where price sits inside the range is
+    # a matter of degree. Note this is stricter than Hedgeye's own wording, which
+    # sells *some* when TRADE breaks with TREND intact.
     if broke_trade and trend_bull:
-        return TRIM_LONG, event + " with TREND still bullish - trim, do not exit"
+        return REMOVE_LONG, event + " to the downside - sell, wait for the model to buy back"
     if broke_trade:
         return REMOVE_LONG, event + " with TREND already bearish - exit"
     if recl_trade and trend_bull is False:
-        return TRIM_SHORT, event + " with TREND still bearish - buy back some"
+        return COVER_SHORT, event + " to the upside - cover, wait for the model to re-short"
     if recl_trade:
         return COVER_SHORT, event + " - close the short"
     # A TREND event that yielded to a fresher TRADE one still stands behind it.
