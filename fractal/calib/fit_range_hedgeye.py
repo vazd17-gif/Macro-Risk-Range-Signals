@@ -31,14 +31,28 @@ SPANS = [1, 3, 5, 8]
 FLOORS = [0.0, 0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.025]
 
 
-def load_refs():
+DEFAULT_REFS = ("hedgeye_ranges.csv", "hedgeye_early_look_all.csv",
+                "hedgeye_ranges_0830.csv")
+
+
+def load_refs(files=None):
+    """Every published range we hold, tagged by whether it is an ETF or macro.
+
+    The two populations are kept distinguishable because a single multiplier fitted
+    across both hides a real difference: the ETF weeklies imply a much deeper
+    downside reach than the macro Early Looks do, and pooling them splits the
+    difference in a way that fits neither.
+    """
     frames = []
-    for f in ("hedgeye_ranges.csv", "hedgeye_early_look.csv"):
+    for f in (files or DEFAULT_REFS):
         d = pd.read_csv(repo_path("reference", f))
         if "yf" not in d:
             d["yf"] = d["ticker"]
-        frames.append(d[["ticker", "yf", "prior_close_date", "rr_low", "rr_high"]])
-    return pd.concat(frames, ignore_index=True)
+        d = d.copy()
+        d["kind"] = "macro" if "early_look" in f else "etf"
+        frames.append(d[["ticker", "yf", "prior_close_date", "rr_low", "rr_high", "kind"]])
+    out = pd.concat(frames, ignore_index=True)
+    return out.drop_duplicates(subset=["ticker", "prior_close_date"])
 
 
 class Obs:
@@ -104,12 +118,18 @@ def score(obs, m_up, m_dn, floor):
 
 def main():
     ap = argparse.ArgumentParser(description="Fit a Hedgeye-targeted RANGE profile.")
+    ap.add_argument("--csv", action="append", default=None,
+                    help="reference CSV under reference/ (repeatable; default: all three)")
+    ap.add_argument("--kind", choices=["all", "etf", "macro"], default="all",
+                    help="fit on ETF rows, macro rows, or both")
     ap.add_argument("--write", action="store_true",
                     help="save as the 'hedgeye_anchor' range profile in params.yaml")
     args = ap.parse_args()
 
     params = load_params()
-    refs = load_refs()
+    refs = load_refs(args.csv)
+    if args.kind != "all":
+        refs = refs[refs["kind"] == args.kind]
 
     results = []
     for lam in LAMBDAS:
@@ -126,7 +146,11 @@ def main():
                                 "rmse_pct": 100 * np.sqrt(sse / n)})
     results.sort(key=lambda r: r["sse"])
 
-    print("=== fit RANGE to Hedgeye's published edges (52 obs, 2 dates) ===\n")
+    print("=== fit RANGE to Hedgeye's published edges ===")
+    print("  %d observations, %d dates, %d ETF / %d macro"
+          % (len(refs), refs["prior_close_date"].nunique(),
+             int((refs["kind"] == "etf").sum()),
+             int((refs["kind"] == "macro").sum())))
     print("  best:")
     for r in results[:8]:
         print("    lambda=%.3f span=%d floor=%.4f  m_up=%.2f m_dn=%.2f  rmse=%.2f%%"
@@ -149,7 +173,11 @@ def main():
             "m_up": round(float(best["m_up"]), 3), "m_dn": round(float(best["m_dn"]), 3),
             "floor": round(float(best["floor"]), 4), "winsor_z": None,
             "fit_rmse_pct": round(float(best["rmse_pct"]), 3),
-            "note": "fitted to Hedgeye's own ranges (35 ETF + 17 macro); wider than Similar Set",
+            "note": ("fitted to %d Hedgeye ranges across %d dates (%s rows). ETF and macro "
+                     "are separate populations - ETFs want a wider, downside-skewed band "
+                     "(~2.3/2.7) and macro a narrower symmetric one (~1.7/1.7) - so this "
+                     "profile is fitted to the population the report actually covers."
+                     % (len(refs), refs["prior_close_date"].nunique(), args.kind)),
         }
         save_params(params)
         print("\n[hedgeye-fit] wrote 'hedgeye_anchor' profile to config/params.yaml")

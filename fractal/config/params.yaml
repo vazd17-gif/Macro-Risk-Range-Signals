@@ -23,14 +23,15 @@ range:
   hedgeye_anchor:
     lam: 0.94
     anchor_span: 5
-    m_up: 2.1
-    m_dn: 1.74
+    m_up: 2.3
+    m_dn: 2.68
     floor: 0.0
     winsor_z: null
-    fit_rmse_pct: 1.225
-    note: 'RECOMMENDED Hedgeye target. Plain sigma multiplier, no volume term (volume
-      not detectable in range width on available data). Wider than the Similar Set
-      default: matches Hedgeye edges to ~0.4% median on macro, width ratio ~1.0x.'
+    fit_rmse_pct: 0.924
+    note: fitted to 74 Hedgeye ranges across 2 dates (etf rows). ETF and macro are
+      separate populations - ETFs want a wider, downside-skewed band (~2.3/2.7) and
+      macro a narrower symmetric one (~1.7/1.7) - so this profile is fitted to the
+      population the report actually covers.
   hedgeye_vol:
     lam: 0.94
     anchor_span: 5
