@@ -10,6 +10,13 @@ goes to a notification service that already has an app on the phone, which is a 
 shorter path than Web Push: no VAPID keys, no subscription store, no server of our
 own, and it works on iOS without the site being installed first.
 
+Two consequences of the phone being an iPhone shape everything below. iOS cannot
+hand an https link to an installed home-screen web app, so tapping an alert lands in
+Safari rather than the dashboard -- which means the notification has to carry the
+whole decision itself, not a pointer to it. And iOS gives a sender no control over
+notification colour, so the signal colours from the dashboard are carried as emoji,
+which is the only colour that reaches the banner.
+
 The hard part is not sending, it is *not* sending. The live job runs every ten
 minutes, so a naive version would re-announce the same broken TREND thirty times
 before lunch. Every alert therefore carries a key, keys already pushed are kept in a
@@ -18,6 +25,7 @@ event fires exactly once per day.
 """
 from __future__ import annotations
 
+import collections
 import json
 import os
 import urllib.parse
@@ -32,6 +40,21 @@ TIMEOUT = 15
 # Twenty separate buzzes is not an alert, it is a reason to turn alerts off.
 DIGEST_AT = 4
 
+# These mirror SIG_STYLE in etf_report exactly, so a glance at the phone reads the
+# same as a glance at the dashboard: green add long, red remove long or a line lost,
+# amber add short, blue cover short or a line reclaimed.
+TAGS = {
+    ADD_LONG:     "green_circle",
+    REMOVE_LONG:  "red_circle",
+    ADD_SHORT:    "orange_circle",
+    COVER_SHORT:  "large_blue_circle",
+    "lost":       "red_circle",
+    "reclaimed":  "large_blue_circle",
+    "digest":     "bar_chart",
+}
+
+Event = collections.namedtuple("Event", "key title body short urgent tag")
+
 
 # --------------------------------------------------------------------- backends
 
@@ -41,11 +64,14 @@ def _post(url, data, headers=None):
         return r.status
 
 
-def _ntfy(title, body, urgent):
+def _ntfy(title, body, urgent, tag):
     """ntfy.sh: no account, no key -- the topic name is the address.
 
     Which is also the catch. Anyone who knows the topic can read it, so it has to be
     unguessable; `--setup` generates a random one.
+
+    `Title` is an HTTP header and so has to stay ASCII; the body is sent as UTF-8
+    and may hold anything.
     """
     topic = os.environ.get("FRACTAL_NTFY_TOPIC", "").strip()
     if not topic:
@@ -54,7 +80,7 @@ def _ntfy(title, body, urgent):
     headers = {
         "Title": title.encode("ascii", "replace").decode(),
         "Priority": "high" if urgent else "default",
-        "Tags": "chart_with_upwards_trend",
+        "Tags": tag or "",
         "Click": os.environ.get("FRACTAL_SITE_URL", ""),
     }
     _post("%s/%s" % (server, urllib.parse.quote(topic)),
@@ -62,7 +88,8 @@ def _ntfy(title, body, urgent):
     return True
 
 
-def _pushover(title, body, urgent):
+def _pushover(title, body, urgent, tag):
+    """Pushover has no tag vocabulary, so the colour cue is dropped here."""
     token = os.environ.get("FRACTAL_PUSHOVER_TOKEN", "").strip()
     user = os.environ.get("FRACTAL_PUSHOVER_USER", "").strip()
     if not (token and user):
@@ -92,12 +119,12 @@ def configured():
     return out
 
 
-def send(title, body, urgent=False):
+def send(title, body, urgent=False, tag=None):
     """Deliver to every configured backend. Returns how many accepted it."""
     n = 0
     for backend in BACKENDS:
         try:
-            if backend(title, body, urgent):
+            if backend(title, body, urgent, tag):
                 n += 1
         except Exception as e:
             print("  %s failed: %s" % (backend.__name__.strip("_"), e))
@@ -113,7 +140,7 @@ def _fmt(x):
 
 
 def _num(x):
-    """None for anything not a real number, so callers can test once."""
+    """None for anything that is not a real number, so callers test once."""
     if x is None or x != x:
         return None
     try:
@@ -125,10 +152,9 @@ def _num(x):
 def _detail(r):
     """The lines that make a notification worth reading without opening anything.
 
-    On iOS a notification cannot hand off to an installed web app -- tapping it
-    always lands in Safari -- so the alert has to carry the decision itself: where
-    spot is, the range it sits in, and both duration lines. Three lines is what an
-    expanded iOS banner shows without truncating.
+    Three or four lines is what an expanded iOS banner shows without truncating,
+    which is the budget: spot, the range with where price sits inside it, both
+    duration lines, and for a signal the reason.
     """
     lines = []
 
@@ -153,7 +179,7 @@ def _detail(r):
 
 
 def events(df):
-    """(key, title, body, short, urgent) for everything currently worth a push.
+    """Everything currently worth a push, as Event records.
 
     `short` is the one-line form used when several fire at once and go as a digest;
     `body` is the full read used when an alert travels on its own.
@@ -161,6 +187,7 @@ def events(df):
     A crossing outranks a signal: crossing a line is a change of state, whereas a
     signal can restate a condition that has held for days.
     """
+    nl = chr(10)
     out = []
     for r in df.itertuples():
         if getattr(r, "is_index", False) or getattr(r, "cash_like", False):
@@ -171,23 +198,26 @@ def events(df):
         cross = getattr(r, "intraday", "")
         cross = "" if (cross is None or cross != cross) else str(cross).strip()
         if cross:
-            out.append(("%s|%s" % (tk, cross),
-                        "%s %s" % (tk, cross),
-                        "\n".join(_detail(r)),
-                        "%s %s at %s" % (tk, cross, spot),
-                        True))
+            out.append(Event(
+                key="%s|%s" % (tk, cross),
+                title="%s %s" % (tk, cross),
+                body=nl.join(_detail(r)),
+                short="%s %s at %s" % (tk, cross, spot),
+                urgent=True,
+                tag=TAGS.get(cross.split(" ")[0], "")))
             continue
 
         sig = getattr(r, "signal", None)
         if sig in (ADD_LONG, ADD_SHORT, REMOVE_LONG, COVER_SHORT):
-            why = getattr(r, "why", "") or ""
-            why = "" if why != why else str(why).strip()
-            body = _detail(r) + ([why] if why else [])
-            out.append(("%s|%s" % (tk, sig),
-                        "%s %s" % (tk, sig),
-                        "\n".join(body),
-                        "%s %s at %s%s" % (tk, sig, spot, " - " + why if why else ""),
-                        sig in (REMOVE_LONG, COVER_SHORT)))
+            why = getattr(r, "why", "")
+            why = "" if (why is None or why != why) else str(why).strip()
+            out.append(Event(
+                key="%s|%s" % (tk, sig),
+                title="%s %s" % (tk, sig),
+                body=nl.join(_detail(r) + ([why] if why else [])),
+                short="%s %s at %s%s" % (tk, sig, spot, " - " + why if why else ""),
+                urgent=sig in (REMOVE_LONG, COVER_SHORT),
+                tag=TAGS.get(sig, "")))
     return out
 
 
@@ -229,43 +259,48 @@ def notify(df, asof="", verbose=True, dry=False, seed=False):
     *after* that -- a line crossed mid-session, a name that reaches an edge while
     the market is open.
     """
+    nl = chr(10)
     if seed:
-        keys = {e[0] for e in events(df)}
+        keys = {e.key for e in events(df)}
         asof = asof or str(df.attrs.get("asof", "")) or "?"
         if not dry:
             _save(asof, keys)
         if verbose:
             print("alerts: seeded %d daily signals (intraday changes will push)" % len(keys))
         return 0
+
     if not configured():
         if verbose:
             print("alerts: no push backend configured "
                   "(run: python -m fractal.app.alerts --setup)")
         return 0
+
     asof = asof or str(df.attrs.get("asof", "")) or "?"
     already = _load(asof)
-    new = [e for e in events(df) if e[0] not in already]
+    new = [e for e in events(df) if e.key not in already]
     if not new:
         if verbose:
             print("alerts: nothing new (%d already pushed today)" % len(already))
         return 0
 
     if len(new) <= DIGEST_AT:
-        for _key, title, body, _short, urgent in new:
+        for e in new:
             if not dry:
-                send(title, body, urgent)
+                send(e.title, e.body, e.urgent, e.tag)
             if verbose:
-                print("  push: %s\n         %s"
-                      % (title, body.replace("\n", "\n         ")))
+                print("  push: %s [%s]%s         %s"
+                      % (e.title, e.tag, nl, e.body.replace(nl, nl + "         ")))
     else:
-        body = "\n".join(e[3] for e in new)
+        body = nl.join(e.short for e in new)
         if not dry:
-            send("Risk Range: %d alerts" % len(new), body, any(e[4] for e in new))
+            send("Risk Range: %d alerts" % len(new), body,
+                 any(e.urgent for e in new), TAGS["digest"])
         if verbose:
-            print("  push digest (%d):\n    %s" % (len(new), body.replace("\n", "\n    ")))
+            print("  push digest (%d):%s    %s"
+                  % (len(new), nl, body.replace(nl, nl + "    ")))
 
     if not dry:
-        _save(asof, already | {e[0] for e in new})
+        _save(asof, already | {e.key for e in new})
     return len(new)
 
 
@@ -296,12 +331,42 @@ Phone alerts via ntfy -- free, no account, works on iPhone and Android.
 """ % (topic, topic))
 
 
+# One of each colour, so the whole tag vocabulary can be checked on the phone in a
+# single run rather than waiting for the market to produce each kind.
+def _samples():
+    nl = chr(10)
+    return [
+        ("SPY ADD LONG",
+         "Spot 769.38  -1.2% today" + nl +
+         "Range 759.32 - 781.40  8% in" + nl +
+         "TRADE 760.53  TREND 751.02" + nl +
+         "low end of RANGE, bullish TRADE and TREND", False, TAGS[ADD_LONG]),
+        ("QQQ lost TREND",
+         "Spot 611.20  -2.1% today" + nl +
+         "Range 604.80 - 628.40  27% in" + nl +
+         "TRADE 615.90  TREND 613.05", True, TAGS["lost"]),
+        ("XLE ADD SHORT",
+         "Spot 96.44  +1.4% today" + nl +
+         "Range 92.10 - 96.80  93% in" + nl +
+         "TRADE 95.02  TREND 97.31" + nl +
+         "high end of RANGE, bearish TREND", False, TAGS[ADD_SHORT]),
+        ("NVDA COVER SHORT",
+         "Spot 217.54  +3.2% today" + nl +
+         "Range 205.10 - 224.60  64% in" + nl +
+         "TRADE 214.80  TREND 209.95" + nl +
+         "reclaimed TRADE", True, TAGS[COVER_SHORT]),
+    ]
+
+
 if __name__ == "__main__":
     import sys
     if "--setup" in sys.argv:
         setup()
     elif "--test" in sys.argv:
-        n = send("Risk Range alert", "Test push -- alerts are working.", False)
-        print("sent via %d backend(s): %s" % (n, ", ".join(configured()) or "none"))
+        total = 0
+        for title, body, urgent, tag in _samples():
+            total += send(title, body, urgent, tag)
+            print("  %-18s %s" % (title, tag))
+        print("sent %d via: %s" % (total, ", ".join(configured()) or "none"))
     else:
         print("configured backends:", ", ".join(configured()) or "none")
