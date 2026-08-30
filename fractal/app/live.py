@@ -22,26 +22,35 @@ import numpy as np
 import pandas as pd
 
 from . import signals as S
+from ..data.etf_universe import yf_symbol
 
 
 def quotes(tickers, chunk=60):
-    """{ticker: last price}. Missing names are simply absent, never guessed."""
+    """{display ticker: last price}. Missing names are simply absent, never guessed.
+
+    Quotes are requested under the feed symbol, not the display ticker. VIX and
+    MOVE publish as ^VIX and ^MOVE; requesting bare "MOVE" silently returns an
+    unrelated listed company, which is worse than returning nothing.
+    """
     import warnings
     warnings.filterwarnings("ignore")
     import yfinance as yf
 
     out = {}
     tickers = list(tickers)
+    feed = {t: yf_symbol(t) for t in tickers}
     for i in range(0, len(tickers), chunk):
         part = tickers[i:i + chunk]
+        syms = sorted({feed[t] for t in part})
         try:
-            data = yf.download(part, period="1d", interval="1m", progress=False,
+            data = yf.download(syms, period="1d", interval="1m", progress=False,
                                group_by="ticker", threads=True)
         except Exception:
             continue
         for t in part:
             try:
-                sub = data[t] if isinstance(data.columns, pd.MultiIndex) else data
+                sym = feed[t]
+                sub = data[sym] if isinstance(data.columns, pd.MultiIndex) else data
                 c = sub["Close"].dropna()
                 if len(c):
                     out[t] = float(c.iloc[-1])
@@ -87,7 +96,9 @@ def reprice(df, px=None, edge=S.EDGE):
         at_high = np.isfinite(pos) and pos >= 1 - edge
 
         sig, why = None, ""
-        if r.get("cash_like"):
+        if r.get("is_index"):
+            why = "volatility index - context only, not a position"
+        elif r.get("cash_like"):
             why = r.get("why") or ""
         elif any(c.startswith("lost") for c in crossed):
             sig, why = S.REMOVE_LONG, " and ".join(crossed)

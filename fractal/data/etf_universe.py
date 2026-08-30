@@ -17,17 +17,17 @@ and Similar Set use for it.
 from __future__ import annotations
 
 RAW = """
-AAAU, AMLP, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BITO, BITS, BLOK, BNO, BTAL, BUXX,
-BWET, CANE, CHIQ, CIBR, CLOX, CLOZ, CORN, CPER, CTA, DBC, DESK, DRAM, DUST, DWSH,
-EDEN, EEM, EIS, EPU, EPHE, EWA, EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS,
-EWY, EWZ, EWW, EZA, EFNL, EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GK,
-GDX, GDXJ, GII, GLD, GLIN, GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD,
-INDA, INDY, ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE,
-KSA, KWEB, KWT, LIT, LQD, MAGS, MLPX, MSTY, MSFO, MTBA, NIKL, NLR, OIH, OXLC,
-PALL, PBD, PFIX, PFIG, PINK, PJP, PPLT, PSP, PSCU, PSCC, PSCD, PSCH, QQQ, QTUM,
-RSP, SCJ, SHY, SIL, SILJ, SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, TBIL,
-TAN, TLT, TFLO, TUR, UAE, UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF,
-XLI, XLK, XLP, XLU, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
+AAAU, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BNO, BUXX, BWET, CANE, CIBR, CLOX,
+CLOZ, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
+EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWW, EZA, EFNL,
+EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GII, GLD, GLIN,
+GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
+ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE, KSA,
+KWEB, KWT, LIT, LQD, MAGS, MTBA, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
+PPLT, PSP, PSCU, PSCC, PSCD, PSCH, QQQ, QTUM, RSP, SCJ, SHY, SIL, SILJ,
+SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, TBIL, TAN, TLT, TUR, UAE,
+UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF, XLI, XLK, XLP, XLU,
+XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 """
 
 # Highest daily dollar-volume S&P 500 names. Berkshire is carried as BRK-B: the
@@ -39,30 +39,48 @@ AMAT, SNDK
 """
 
 
+# Volatility indices. Not tradeable, so they never raise a buy/sell signal -- they
+# are carried for market context. Bearish TRADE and TREND on both is falling
+# volatility, which is supportive for risk assets.
+INDICES = """
+VIX, MOVE
+"""
+
+# Display ticker -> data-feed symbol, where they differ.
+YF_MAP = {"VIX": "^VIX", "MOVE": "^MOVE"}
+
+
+def yf_symbol(ticker):
+    return YF_MAP.get(ticker, ticker)
+
+
+def is_index(ticker):
+    return ticker in _parse(INDICES)
+
+
 # Grouping for the dashboard and newsletter. Anything unlisted falls to "other".
 GROUPS = {
     "us_equity":    ["SPY", "QQQ", "RSP", "IWM", "IWC", "IWO", "MAGS", "SPLV", "SPMO",
-                     "XLG", "DWSH", "BTAL", "GRNY"],
+                     "XLG", "GRNY"],
     "us_sector":    ["XLF", "XLI", "XLK", "XLP", "XLU", "XLRE", "XLV", "XLY", "XRT",
                      "XTL", "XHE", "XOP", "ITA", "ITB", "IAK", "IHF", "PJP", "KRE",
                      "JETS", "OIH", "PSP", "DESK", "FUTY"],
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],
-    "thematic":     ["ARKG", "ARKK", "ARKQ", "BLOK", "BITS", "CIBR", "SKYY", "QTUM", "DRAM",
+    "thematic":     ["ARKG", "ARKK", "ARKQ", "CIBR", "SKYY", "QTUM", "DRAM",
                      "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV",
-                     "AQWA", "PBD", "GK", "PINK", "WOOD", "SLX", "GII"],
+                     "AQWA", "PBD", "PINK", "WOOD", "SLX", "GII"],
     "intl":         ["EEM", "EMXC", "KEMX", "EWA", "EWG", "EWH", "EWI", "EWJ", "EWJV",
                      "EWN", "EWO", "EWQ", "EWS", "EWY", "EWZ", "EWW", "EZA", "EFNL",
                      "EDEN", "EIS", "EPU", "EPHE", "ENZL", "GREK",
                      "COLO", "GLIN", "INDA", "INDY", "SMIN", "IDX", "JPXN", "SCJ",
-                     "KSA", "KWT", "TUR", "UAE", "FXI", "CHIQ", "KWEB"],
+                     "KSA", "KWT", "TUR", "UAE", "FXI", "KWEB"],
     "commodity":    ["GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "DUST",
-                     "PALL", "PPLT", "CPER", "DBC", "CTA", "USO", "BNO", "UGA",
+                     "PALL", "PPLT", "CPER", "DBC", "USO", "BNO", "UGA",
                      "UNG", "FCG", "CORN", "WEAT", "SOYB", "CANE", "BDRY", "BWET"],
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
-                     "CLOZ", "IIGD", "PFIG", "MTBA", "TBIL", "TFLO", "IVOL", "PFIX",
-                     "OXLC", "AMLP", "MLPX", "HBDC"],
-    "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT", "BITO",
-                     "MSTY", "MSFO"],
+                     "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
+    "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT"],
+    "volatility":   ["VIX", "MOVE"],
     "stock":        ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "AVGO", "META",
                      "TSLA", "BRK-B", "MU", "LLY", "JPM", "WMT", "AMD", "V", "JNJ",
                      "XOM", "MA", "INTC", "ABBV", "PLTR", "BAC", "ORCL", "CSCO",
@@ -95,10 +113,15 @@ def stock_tickers():
     return [t for t in dict.fromkeys(_parse(STOCKS)) if t]
 
 
+def index_tickers():
+    """Just the volatility indices."""
+    return [t for t in dict.fromkeys(_parse(INDICES)) if t]
+
+
 def all_etfs(include_unresolved: bool = False):
     """Flat, de-duplicated watchlist in declaration order: funds, then single names."""
     seen, out = set(), []
-    for t in _parse(RAW) + _parse(STOCKS):
+    for t in _parse(INDICES) + _parse(RAW) + _parse(STOCKS):
         if not t or t in seen:
             continue
         if not include_unresolved and t in UNRESOLVED:

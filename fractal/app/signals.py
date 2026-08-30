@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.loader import load_params, load_prices
-from ..data.etf_universe import all_etfs, group_of
+from ..data.etf_universe import all_etfs, group_of, is_index, yf_symbol
 from ..model import adaptive_ma, range_ewma, state as state_mod
 from ..model.range_ewma import volume_features
 
@@ -77,6 +77,13 @@ def _days_since_flip(flags: pd.Series):
 
 def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
              min_range_pct=MIN_RANGE_PCT):
+    """One name -> levels, range position, and any triggered signal.
+
+    A volatility index gets levels and a direction but never a signal: you cannot
+    buy the VIX, and treating it as a position would put nonsense in the book. Its
+    read is macro context -- bearish TRADE and TREND means volatility is falling,
+    which is supportive for risk assets.
+    """
     """One ETF -> levels, range position, and any triggered signals."""
     close = ohlc["Close"].dropna()
     if len(close) < 80:
@@ -170,7 +177,9 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
             [n for n, b in (("TREND", recl_trend), ("TRADE", recl_trade)) if b])
 
     sig, why = None, ""
-    if cash_like:
+    if is_index(ticker):
+        why = "volatility index - context only, not a position"
+    elif cash_like:
         why = "range only %.2f%% wide - too tight for a signal" % width_pct
     elif broke_trend or broke_trade:
         sig, why = REMOVE_LONG, event                      # a fresh break is a sell
@@ -225,6 +234,7 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         "vol_z": vol_z,
         "vol_flag": vol_flag,
         "cash_like": bool(cash_like),
+        "is_index": bool(is_index(ticker)),
         "history_bars": int(bars),
         "young": bool(young),
         "at_low": bool(at_low),
@@ -242,11 +252,14 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
         params["range"] = dict(params["range"])
         params["range"]["active"] = profile
     tickers = tickers or all_etfs()
-    prices = load_prices(tickers, params=params, verbose=verbose)
+    # VIX and MOVE are published under ^-prefixed symbols; everything else is its
+    # own ticker. Fetch by feed symbol, report by display ticker.
+    feed = {t: yf_symbol(t) for t in tickers}
+    prices = load_prices(sorted(set(feed.values())), params=params, verbose=verbose)
 
     rows, missing = [], []
     for t in tickers:
-        df = prices.get(t)
+        df = prices.get(feed[t])
         if df is None or len(df) < 80:
             missing.append(t)
             continue

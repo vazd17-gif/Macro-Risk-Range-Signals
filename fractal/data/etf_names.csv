@@ -4,7 +4,6 @@ AAPL,Apple Inc.
 ABBV,AbbVie Inc.
 AMAT,"Applied Materials, Inc."
 AMD,"Advanced Micro Devices, Inc."
-AMLP,Alerian MLP ETF
 AMZN,"Amazon.com, Inc."
 AQWA,Global X Clean Water ETF
 ARKG,ARK Genomic Revolution ETF
@@ -14,17 +13,12 @@ AVGO,Broadcom Inc.
 BAC,Bank of America Corporation
 BBN,BlackRock Taxable Municipal Bond Trust
 BDRY,Breakwave Dry Bulk Shipping ETF
-BITO,ProShares Bitcoin ETF
-BITS,Global X Blockchain & Bitcoin Strategy ETF
-BLOK,Amplify Blockchain Technology ETF
 BNO,"United States Brent Oil Fund, LP"
 BRK-B,Berkshire Hathaway Inc.
-BTAL,AGF U.S. Market Neutral Anti-Beta Fund
 BUXX,Strive Enhanced Income Short Maturity ETF
 BWET,Breakwave Tanker Shipping ETF
 CANE,Teucrium Sugar Fund
 CAT,Caterpillar Inc.
-CHIQ,Global X MSCI China Consumer Discretionary ETF
 CIBR,First Trust NASDAQ Cybersecurity ETF
 CLOX,Eldridge AAA CLO ETF
 CLOZ,Eldridge BBB-B CLO ETF
@@ -33,13 +27,11 @@ CORN,Teucrium Corn Fund
 COST,Costco Wholesale Corporation
 CPER,"United States Copper Index Fund, LP"
 CSCO,"Cisco Systems, Inc."
-CTA,Simplify Managed Futures Strategy ETF
 CVX,Chevron Corporation
 DBC,Invesco DB Commodity Index Tracking Fund
 DESK,Vaneck Office And Commercial REIT ETF
 DRAM,Roundhill Memory ETF
 DUST,Direxion Daily Gold Miners Index Bear 2X Shares
-DWSH,AdvisorShares Dorsey Wright Short ETF
 EDEN,iShares MSCI Denmark ETF
 EEM,iShares MSCI Emerging Markets ETF
 EFNL,iShares MSCI Finland ETF
@@ -72,7 +64,6 @@ FXY,Invesco CurrencyShares Japanese Yen Trust
 GDX,VanEck Gold Miners ETF
 GDXJ,VanEck Junior Gold Miners ETF
 GII,State Street SPDR S&P Global Infrastructure ETF
-GK,AdvisorShares Gerber Kawasaki ETF
 GLD,SPDR Gold Shares
 GLIN,VanEck India Growth Leaders ETF
 GOOG,Alphabet Inc.
@@ -116,10 +107,8 @@ LRCX,Lam Research Corporation
 MA,Mastercard Incorporated
 MAGS,Roundhill Magnificent Seven ETF
 META,"Meta Platforms, Inc."
-MLPX,Global X MLP & Energy Infrastructure ETF
-MSFO,YieldMax MSFT Option Income Strategy ETF
+MOVE,Northern Trust iBoxx 5-Year Tar
 MSFT,Microsoft Corporation
-MSTY,Yieldmax MSTR Option Income Strategy ETF
 MTBA,Simplify MBS ETF
 MU,"Micron Technology, Inc."
 NIKL,Sprott Nickel Miners ETF
@@ -127,11 +116,8 @@ NLR,VanEck Uranium and Nuclear ETF
 NVDA,NVIDIA Corporation
 OIH,VanEck Oil Services ETF
 ORCL,Oracle Corporation
-OXLC,Oxford Lane Capital Corp.
 PALL,abrdn Physical Palladium Shares ETF
 PBD,Invesco Global Clean Energy ETF
-PFIG,Invesco Fundamental Investment Grade Corporate Bond ETF
-PFIX,Simplify Interest Rate Hedge ETF
 PINK,Simplify Health Care ETF
 PJP,Invesco Pharmaceuticals ETF
 PLTR,Palantir Technologies Inc.
@@ -160,7 +146,6 @@ SPMO,Invesco S&P 500 Momentum ETF
 SPY,State Street SPDR S&P 500 ETF Trust
 TAN,Invesco Solar ETF
 TBIL,F/m US Treasury 3 Month Bill Fund - ETF Class Shares
-TFLO,iShares Treasury Floating Rate Bond ETF
 TLT,iShares 20+ Year Treasury Bond ETF
 TSLA,"Tesla, Inc."
 TUR,iShares MSCI Turkey ETF
@@ -171,6 +156,7 @@ URA,Global X Uranium ETF
 USO,"United States Oil Fund, LP"
 UUP,Invesco DB US Dollar Index Bullish Fund
 V,Visa Inc.
+VIX,CBOE Volatility Index
 WEAT,Teucrium Wheat Fund
 WGMI,CoinShares Bitcoin Mining and Digital Power ETF
 WMT,Walmart Inc.

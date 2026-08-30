@@ -17,9 +17,16 @@ import re
 import pandas as pd
 
 from .loader import repo_path
-from .etf_universe import all_etfs
+from .etf_universe import all_etfs, yf_symbol
 
 CACHE = "etf_names.csv"
+
+# The feed returns a wrong long name for some index symbols (^MOVE comes back as an
+# unrelated bond fund), so these are set here rather than fetched.
+OVERRIDES = {
+    "VIX": "CBOE Volatility Index",
+    "MOVE": "ICE BofA MOVE Index",
+}
 
 # Each trailing word must be preceded by whitespace. Without that requirement the
 # "Shares" branch matches inside CoinShares, CurrencyShares and AdvisorShares and
@@ -81,7 +88,9 @@ def load():
 
 def short_names():
     """{ticker: display name}, ready to render."""
-    return {t: shorten(n, t) for t, n in load().items()}
+    out = {t: shorten(n, t) for t, n in load().items()}
+    out.update(OVERRIDES)
+    return out
 
 
 def refresh(tickers=None, verbose=True):
@@ -99,7 +108,7 @@ def refresh(tickers=None, verbose=True):
             continue
         name = ""
         try:
-            info = yf.Ticker(t).get_info()
+            info = yf.Ticker(yf_symbol(t)).get_info()
             name = info.get("longName") or info.get("shortName") or ""
         except Exception:
             pass

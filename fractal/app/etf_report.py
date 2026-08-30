@@ -41,15 +41,55 @@ GROUP_LABEL = {
 
 
 def _universe_label(df):
-    """e.g. "157 ETFs, 31 stocks" -- the list is no longer funds only."""
+    """e.g. "143 ETFs, 32 stocks, 2 vol indices" -- the list is no longer funds only."""
     n_stock = int((df["group"] == "stock").sum()) if "group" in df else 0
-    n_fund = len(df) - n_stock
+    n_idx = int(df["is_index"].sum()) if "is_index" in df else 0
+    n_fund = len(df) - n_stock - n_idx
     parts = []
-    if n_fund:
-        parts.append("%d ETF%s" % (n_fund, "" if n_fund == 1 else "s"))
-    if n_stock:
-        parts.append("%d stock%s" % (n_stock, "" if n_stock == 1 else "s"))
+    for n, one, many in ((n_fund, "ETF", "ETFs"), (n_stock, "stock", "stocks"),
+                         (n_idx, "vol index", "vol indices")):
+        if n:
+            parts.append("%d %s" % (n, one if n == 1 else many))
     return ", ".join(parts) or "%d names" % len(df)
+
+
+def _vol_regime(idx):
+    """One-line read of the volatility complex.
+
+    Falling volatility is supportive for risk assets, so bearish TRADE and TREND on
+    the VIX and MOVE is a tailwind rather than a warning. Both bullish is the
+    opposite. The point of carrying them is that this read frames every other
+    signal on the page.
+    """
+    if idx.empty:
+        return "", "#8b94a5"
+    bear = int(((idx["trade_bull"] == False) & (idx["trend_bull"] == False)).sum())
+    bull = int(((idx["trade_bull"] == True) | (idx["trend_bull"] == True)).sum())
+    n = len(idx)
+    if bear == n:
+        return ("Volatility is bearish on both durations across the complex &mdash; "
+                "falling vol, supportive for risk assets."), "#0ea37f"
+    if bear == 0:
+        return ("Volatility is bullish &mdash; rising vol, a headwind for risk "
+                "assets. Treat long signals below with more caution."), "#ef5350"
+    return ("Volatility is mixed across the complex &mdash; no clear tailwind "
+            "either way."), "#d9a441"
+
+
+def _index_rows(idx):
+    """(ticker, name, spot, trade, trend, read, colour) per index."""
+    out = []
+    for r in idx.itertuples():
+        both_bear = (r.trade_bull is False) and (r.trend_bull is False)
+        both_bull = bool(r.trade_bull) and bool(r.trend_bull)
+        if both_bear:
+            read, col = "bearish TRADE and TREND &middot; supportive", "#0ea37f"
+        elif both_bull:
+            read, col = "bullish TRADE and TREND &middot; risk-off", "#ef5350"
+        else:
+            read, col = "mixed", "#d9a441"
+        out.append((r.ticker, r.spot, r.trade, r.trend, read, col))
+    return out
 
 
 def _weekday_label(datestr):
@@ -201,7 +241,7 @@ def render_dashboard(df, params, generated=None, book=None):
     counts = df["signal"].value_counts().to_dict()
 
     body = []
-    for r in df.itertuples():
+    for r in df[~df.get("is_index", False)].itertuples() if "is_index" in df else df.itertuples():
         pos = float(np.clip(r.pos_in_range, 0, 1))
         sig = r.signal or ""
         colour = SIG_STYLE.get(sig, ("#8b94a5", ""))[0]
@@ -283,6 +323,27 @@ def render_dashboard(df, params, generated=None, book=None):
             '<div style="display:flex;flex-wrap:wrap;gap:8px">%s</div></div>'
             % (" &middot; ".join(bits), chips))
 
+    idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
+    vol_html = ""
+    if len(idx):
+        note, ncol = _vol_regime(idx)
+        cells = "".join(
+            '<div style="flex:1 1 220px;background:#11151b;border:1px solid var(--line);'
+            'border-radius:8px;padding:10px 13px">'
+            '<div><span class="tk" style="color:%s">%s</span>'
+            '<span style="color:var(--dim);font-size:12px"> &nbsp;%s</span></div>'
+            '<div style="color:var(--dim);font-size:11.5px;margin-top:3px">'
+            'TRADE %s &middot; TREND %s</div>'
+            '<div style="color:%s;font-size:11.5px;margin-top:2px">%s</div></div>'
+            % (col, tk, _f(spot), _f(trade), _f(trend), col, read)
+            for tk, spot, trade, trend, read, col in _index_rows(idx))
+        vol_html = (
+            '<h2 style="font-size:15px;margin:6px 0 9px;letter-spacing:-.01em">'
+            'Market volatility</h2>'
+            '<div style="color:%s;font-size:12.5px;margin-bottom:10px">%s</div>'
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px">%s</div>'
+            % (ncol, note, cells))
+
     pf_html = ""
     if book is not None and not book.empty:
         prow = []
@@ -347,6 +408,7 @@ def render_dashboard(df, params, generated=None, book=None):
 <div class="cards">%s</div>
 %s
 %s
+%s
 <div class="controls">
 %s<span style="width:8px"></span>%s<span style="width:8px"></span>
 <button data-vol="surge" aria-pressed="false">Volume surge</button>
@@ -366,6 +428,7 @@ an unusually light one (z &le; &minus;2).
        "".join('<div class="card" style="border-left-color:%s"><div class="k">%s</div>'
                '<div class="v">%s</div></div>' % (c, k, v) for k, v, c in cards),
        alerts_html,
+       vol_html,
        pf_html,
        "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s.title())
                for s in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT)),
@@ -567,9 +630,31 @@ def render_newsletter(df, params, generated=None, book=None):
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
             % (len(outl), "".join(rowsv)))
 
+    # volatility complex, above the full list
+    idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
+    if len(idx):
+        note, ncol = _vol_regime(idx)
+        items = "".join(
+            '<tr><td style="padding:8px 0;border-bottom:1px solid #e6e8ec">'
+            '<div><span style="font-weight:700;color:#111">%s</span>'
+            '<span style="color:#8b94a5;font-size:12px"> &nbsp;%s</span>'
+            '<span style="float:right;color:%s;font-size:12.5px;font-weight:600">%s</span></div>'
+            '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">'
+            'TRADE %s &middot; TREND %s</div></td></tr>'
+            % (tk, _f(spot), col, read, _f(trade), _f(trend))
+            for tk, spot, trade, trend, read, col in _index_rows(idx))
+        sections += (
+            '<tr><td style="padding:22px 0 6px">'
+            '<span style="display:inline-block;background:#334155;color:#fff;font-size:12px;'
+            'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
+            'MARKET VOLATILITY</span>'
+            '<div style="color:%s;font-size:12.5px;margin-top:7px">%s</div></td></tr>'
+            '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
+            % (ncol, note, items))
+
     # appendix: every name, compact
     app = []
-    for g, grp in df.groupby("group", sort=False):
+    for g, grp in (df[~df["is_index"]] if "is_index" in df else df).groupby("group", sort=False):
         app.append('<tr><td colspan="8" style="padding:14px 0 4px;font-weight:700;font-size:12px;'
                    'color:#8b94a5;letter-spacing:.05em;text-transform:uppercase">%s</td></tr>'
                    % GROUP_LABEL.get(g, g))
