@@ -112,7 +112,14 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         # close -- they act on TRADE intraday. TREND and the RANGE reads stay on the
         # close, because a regime call and a range edge are close-to-close
         # judgements and re-deriving them from an 11am print is noise, not news.
-        now_trade = bool(spot > trade) if np.isfinite(trade) else None
+        # A touch of the line counts as being on the other side of it, so the
+        # crossing above and the state the ladder reads cannot disagree.
+        if not np.isfinite(trade):
+            now_trade = None
+        elif was_trade:
+            now_trade = bool(spot > trade)
+        else:
+            now_trade = bool(spot >= trade)
         now_trend = r["trend_bull"]
         pos = (spot - lo) / (hi - lo) if (np.isfinite(lo) and np.isfinite(hi) and hi > lo) else np.nan
 
@@ -122,12 +129,16 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         # alert for a 0.003% move. So a crossing only counts once price has cleared
         # the line by a real distance -- scaled to the range width, because a tenth
         # of a percent is a long way in LQD and nothing at all in ARKQ.
-        buf = S.line_band(lo, hi)
+        # Reaching TRADE counts, not just clearing it. Hedgeye covered its UUP short
+        # on a session high of 28.20 against a TRADE line of 28.20 -- price touched
+        # the line and they acted; a buffer that demanded daylight past it, and a
+        # strict inequality that demanded price go through it, both said nothing
+        # happened. The line is the decision, so arriving at it is the event.
         crossed = []
-        if (was_trade is not None and now_trade is not None
-                and bool(was_trade) != bool(now_trade)
-                and not (np.isfinite(trade) and abs(spot - trade) <= buf)):
-            crossed.append(("lost " if was_trade else "reclaimed ") + "TRADE")
+        if was_trade is not None and np.isfinite(trade):
+            touched = spot <= trade if was_trade else spot >= trade
+            if touched:
+                crossed.append(("lost " if was_trade else "reclaimed ") + "TRADE")
 
         # Carried from the close, not re-derived from live price. All four are
         # needed because the buy and sell bands differ with the volatility regime.
