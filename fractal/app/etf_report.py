@@ -657,7 +657,7 @@ def _explainer():
          "Both bullish is trending long; both bearish is trending short; one of each is "
          "counter-trend. The rule that saves the most money: do not buy the low end of "
          "the RANGE while TRADE is broken. Wait for TREND to hold. Those names sit under "
-         "WATCHLIST rather than ADD LONG."),
+         "WATCHLIST rather than BUY."),
         ("VOLUME",
          "How unusual today&rsquo;s volume is for that name, measured in standard "
          "deviations rather than percent &mdash; a +60% day is routine for a thin fund "

@@ -96,30 +96,34 @@ def base_bar(ticker):
     return c.index[-1].date().isoformat(), float(c.iloc[-1])
 
 
-def live_spot(tickers):
-    """Current price per ticker: the live quote when the market is open, else the baseline close.
+def live_spot(tickers, asof=""):
+    """Current price per ticker, but only when it is genuinely current.
 
-    Falls back silently per ticker -- a missing quote is not a reason to fail the
-    whole report, and the baseline close is the correct answer outside market hours.
+    A quote is used only if it comes from a session after `asof`, the close the
+    report was built on. Outside market hours the feed keeps returning the previous
+    session's last continuous print, which is not that session's official close --
+    the closing auction sets the close and the two differ. Marking a book to that
+    print invents P&L on a day nothing traded: it had ENZL at +0.46% on a Sunday.
+
+    Falls back silently per ticker; a missing quote is not a reason to fail the
+    whole report, and the baseline close is the right answer when the market is shut.
     """
-    out = {}
+    from . import live as LIVE
     try:
-        import yfinance as yf
-        import warnings
-        warnings.filterwarnings("ignore")
-        data = yf.download(list(tickers), period="1d", interval="1m",
-                           progress=False, group_by="ticker", threads=True)
-        for t in tickers:
-            try:
-                sub = data[t] if isinstance(data.columns, pd.MultiIndex) else data
-                c = sub["Close"].dropna()
-                if len(c):
-                    out[t] = float(c.iloc[-1])
-            except Exception:
-                pass
+        px, when = LIVE.quotes(list(tickers), with_times=True)
     except Exception:
-        pass
-    return out
+        return {}
+    if not asof:
+        return px
+    fresh = {}
+    for t, v in px.items():
+        ts = when.get(t)
+        try:
+            if ts is None or str(pd.Timestamp(ts).date()) > str(asof):
+                fresh[t] = v
+        except Exception:
+            fresh[t] = v
+    return fresh
 
 
 def add_position(ticker, side, price=None, date=None, shares=None, notes="", custom=None):
@@ -291,7 +295,9 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         return pd.DataFrame()
 
     s = sig_df.set_index("ticker")
-    quotes = live_spot(sorted(set(pos["ticker"]) & set(s.index))) if live else {}
+    asof = str(sig_df["asof"].max()) if "asof" in sig_df else ""
+    quotes = (live_spot(sorted(set(pos["ticker"]) & set(s.index)), asof=asof)
+              if live else {})
 
     rows = []
     for p in pos.itertuples():
