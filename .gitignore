@@ -24,3 +24,6 @@ fractal/out/.last_sent
 *.pdf
 fractal/reference/charts/
 fractal/reference/hedgeye_*.csv
+# The dashboard is published as docs/index.html; the copy under out/ is a build
+# artefact and would otherwise be committed twice with identical content.
+fractal/out/*.html

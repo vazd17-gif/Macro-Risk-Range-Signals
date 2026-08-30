@@ -21,6 +21,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM Publish the freshly rendered dashboard to GitHub Pages.
+if not exist "docs" mkdir "docs"
+copy /Y "fractal\out\etf_dashboard.html" "docs\index.html" >nul
+git rev-parse --is-inside-work-tree >nul 2>&1
+if not errorlevel 1 (
+  git add docs/index.html >nul 2>&1
+  git diff --cached --quiet || git commit -q -m "daily: levels off the latest close" >> "%LOG%" 2>&1
+  git push -q >> "%LOG%" 2>&1
+)
+
 REM Email only when FRACTAL_MAIL_TO is set. publish.py skips duplicate sends itself.
 if defined FRACTAL_MAIL_TO (
   python -m fractal.app.publish --send >> "%LOG%" 2>&1
