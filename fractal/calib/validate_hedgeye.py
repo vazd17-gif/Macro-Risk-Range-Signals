@@ -127,9 +127,17 @@ def main():
     ap = argparse.ArgumentParser(description="Validate the model vs Hedgeye's published risk ranges.")
     ap.add_argument("--set", choices=["weekly", "early", "both"], default="both")
     ap.add_argument("--csv", default=None, help="override with a custom reference CSV")
+    # Default to the profile the live report actually runs, not the params file's
+    # own default -- validating a configuration nothing ships is worthless.
+    ap.add_argument("--profile", default="hedgeye_anchor",
+                    help="RANGE profile to validate (default: the one in production)")
     args = ap.parse_args()
 
     params = load_params()
+    if args.profile:
+        params["range"] = dict(params["range"])
+        params["range"]["active"] = args.profile
+        print("RANGE profile under test: %s\n" % args.profile)
     if args.csv:
         report(validate(args.csv, params), os.path.basename(args.csv))
         return
@@ -139,6 +147,9 @@ def main():
     if args.set in ("early", "both"):
         report(validate(repo_path("reference", "hedgeye_early_look.csv"), params),
                "Early Look 'Our Levels'  (macro, ranges as of 2026-08-27)")
+        wk = repo_path("reference", "hedgeye_early_look_week.csv")
+        if os.path.exists(wk):
+            report(validate(wk, params), "Early Look 'Our Levels'  (a full week of issues)")
 
 
 if __name__ == "__main__":
