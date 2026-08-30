@@ -192,6 +192,52 @@ def _action(side, sig, at_low, at_high, event):
     return A_HOLD, ""
 
 
+# Signals that open a position on their own, and which way. A range break is the
+# one signal that arrives with its own conviction test already passed -- it needs
+# price at the edge AND two sigma of volume AND TREND agreeing -- so it is the one
+# the book acts on without being told. The edge signals are not here: ADD LONG
+# fires on a dozen names some days, and a book that opened all of them would be an
+# index fund with extra steps.
+AUTO_OPEN = {S.BREAKOUT: LONG, S.BREAKDOWN: SHORT}
+
+
+def sync(sig_df: pd.DataFrame, custom=None, verbose=True):
+    """Open positions for today's range breaks. Returns the rows it added.
+
+    Booked at the close the signal came from, not at some later price, so entry
+    matches the bar the decision was made on.
+
+    Deliberately not called from the intraday re-pricer: a breakout is defined on
+    the close, and opening one at 11am on a move that closes back inside would put
+    a position in the book that the model never actually signalled.
+    """
+    if sig_df.empty:
+        return []
+    held = open_positions(custom)
+    have = set(zip(held["ticker"], held["side"])) if not held.empty else set()
+    opened = []
+    for r in sig_df.itertuples():
+        side = AUTO_OPEN.get(getattr(r, "signal", None))
+        if side is None or (r.ticker, side) in have:
+            continue
+        if (r.ticker, LONG if side == SHORT else SHORT) in have:
+            if verbose:
+                print("  %s %s skipped - the opposite side is already open"
+                      % (r.ticker, side))
+            continue
+        row = add_position(r.ticker, side, price=float(r.spot),
+                           date=str(getattr(r, "asof", "")) or None,
+                           notes="auto: %s" % r.signal, custom=custom)
+        have.add((r.ticker, side))
+        opened.append(row)
+        if verbose:
+            print("  opened %s %s at %.2f (%s)" % (side, r.ticker, row["entry_price"],
+                                                   r.signal))
+    if verbose and not opened:
+        print("  no range breaks to open")
+    return opened
+
+
 def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
     """Open positions joined to today's signals, with P&L and an action.
 

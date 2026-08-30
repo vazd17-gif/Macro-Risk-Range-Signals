@@ -873,6 +873,8 @@ def main():
     ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")
     ap.add_argument("--live", action="store_true",
                     help="re-price against live quotes; levels stay from the last close")
+    ap.add_argument("--sync", action="store_true",
+                    help="open portfolio positions for today's range breaks")
     ap.add_argument("--push", action="store_true",
                     help="push new alerts to the phone (see fractal.app.alerts --setup)")
     args = ap.parse_args()
@@ -906,6 +908,10 @@ def main():
         "newsletter": os.path.join(args.outdir, "etf_newsletter.html"),
         "csv": os.path.join(args.outdir, "etf_signals_%s.csv" % stamp),
     }
+    # Never on a live run: a breakout is defined on the close, so opening one
+    # intraday would book a position the model has not actually signalled yet.
+    if args.sync and not args.live:
+        P.sync(df, custom=args.portfolio)
     book = P.reconcile(df, custom=args.portfolio, live=args.live)
     with open(paths["dashboard"], "w", encoding="utf-8") as fh:
         fh.write(render_dashboard(df, eff, book=book))

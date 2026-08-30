@@ -45,6 +45,9 @@ def main():
         from fractal.app import portfolio as PF
         etf = S.run(params=params, profile=args.profile)
         if not etf.empty:
+            # Open any range breaks before reconciling, so the book the report
+            # renders already contains today's new positions.
+            PF.sync(etf)
             book = PF.reconcile(etf)
             eff = dict(params)
             eff["range"] = dict(params["range"])
