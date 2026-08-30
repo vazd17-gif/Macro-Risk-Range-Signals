@@ -27,6 +27,9 @@ from ..data.etf_names import short_names
 # ---------------------------------------------------------------- shared bits
 SIG_STYLE = {
     S.ADD_LONG:    ("#0ea37f", "Buy - price at the low end of the RANGE with the signal still bullish"),
+    S.BREAKOUT:    ("#2ecc9a", "Add - price has broken out above the RANGE high and held, both durations bullish"),
+    S.TRIM_LONG:   ("#d9a441", "Trim - TRADE has broken while TREND still holds; reduce, do not exit"),
+    S.TRIM_SHORT:  ("#d9a441", "Trim the short - TRADE reclaimed while TREND still bearish; buy back some"),
     S.REMOVE_LONG: ("#ef5350", "Sell - has broken TRADE and/or TREND"),
     S.ADD_SHORT:   ("#d9a441", "Short or avoid - price at the high end of the RANGE with a bearish signal"),
     S.WATCHLIST:   ("#8b94a5", "Watchlist - at the low end but the signal has broken; nothing to act on yet"),
@@ -44,6 +47,9 @@ def _trend_col(trend_bull):
     """Ticker colour: green above TREND, red below, grey where TREND is unknown."""
     return BULL if trend_bull else BEAR if trend_bull is False else FLAT
 
+
+# Long side first, then short, trims beside the full action they reduce.
+SIGNAL_ORDER = S.SIGNALS
 
 GROUP_LABEL = {
     "us_equity": "US Equity", "us_sector": "US Sectors", "us_smallcap": "US Small Cap",
@@ -76,17 +82,33 @@ def _vol_regime(idx):
     """
     if idx.empty:
         return "", "#8b94a5"
+
+    # The bucket leads, because it governs. Our own read of the VIX is directional
+    # -- is volatility rising or falling -- and Hedgeye's is positional: what regime
+    # the level itself puts you in. They can disagree, and when they do the level is
+    # the one that decides whether a signal is actionable at all.
+    lead, lead_col = "", ""
+    vix = idx[idx["ticker"] == "VIX"]
+    if len(vix):
+        lvl = float(vix.iloc[0]["spot"])
+        name, note, stance = S.vix_bucket(lvl)
+        if name:
+            lead_col = STANCE_COL.get(stance, "#8b94a5")
+            lead = ("VIX %.2f &mdash; <b>%s</b> bucket &middot; %s. "
+                    % (lvl, name, note))
     bear = int(((idx["trade_bull"] == False) & (idx["trend_bull"] == False)).sum())
     bull = int(((idx["trade_bull"] == True) | (idx["trend_bull"] == True)).sum())
     n = len(idx)
     if bear == n:
-        return ("Volatility is bearish on both durations across the complex &mdash; "
-                "falling vol, supportive for risk assets."), "#0ea37f"
-    if bear == 0:
-        return ("Volatility is bullish &mdash; rising vol, a headwind for risk "
-                "assets. Treat long signals below with more caution."), "#ef5350"
-    return ("Volatility is mixed across the complex &mdash; no clear tailwind "
-            "either way."), "#d9a441"
+        tail, col = ("Volatility is bearish on both durations across the complex "
+                     "&mdash; falling vol, supportive for risk assets."), "#0ea37f"
+    elif bear == 0:
+        tail, col = ("Volatility is bullish &mdash; rising vol, a headwind for risk "
+                     "assets. Treat long signals below with more caution."), "#ef5350"
+    else:
+        tail, col = ("Volatility is mixed across the complex &mdash; no clear "
+                     "tailwind either way."), "#d9a441"
+    return lead + tail, (lead_col or col)
 
 
 def _index_rows(idx):
@@ -300,7 +322,7 @@ def render_dashboard(df, params, generated=None, book=None):
                pill, html.escape(r.why or "")))
 
     cards = [("Names", len(df), "var(--line)")]
-    for name in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT):
+    for name in SIGNAL_ORDER:
         cards.append((name.title(), counts.get(name, 0), SIG_STYLE[name][0]))
 
     base_lbl = _weekday_label(asof)
@@ -481,7 +503,7 @@ an unusually light one (z &le; &minus;2).
        vol_html,
        pf_html,
        "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s.title())
-               for s in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT)),
+               for s in SIGNAL_ORDER),
        "".join('<button data-grp="%s" aria-pressed="false">%s</button>'
                % (g, GROUP_LABEL[g]) for g in groups),
        "".join('<th%s>%s</th>' % (' class="opt"' if h in OPTIONAL_COLS else "", h)
@@ -628,19 +650,34 @@ def render_newsletter(df, params, generated=None, book=None):
         _nl_section("ADD LONG", SIG_STYLE[S.ADD_LONG][0],
                     "Price is at or near the LOW end of the Risk Range and the signal is "
                     "bullish TRADE and/or TREND.", b[S.ADD_LONG], "long", names),
+        _nl_section("BREAKOUT", SIG_STYLE[S.BREAKOUT][0],
+                    "Price has broken out above the HIGH end of the Risk Range and held "
+                    "there, with both durations bullish. Add to the position.",
+                    b[S.BREAKOUT], "event", names),
+        _nl_section("TRIM LONG", SIG_STYLE[S.TRIM_LONG][0],
+                    "TRADE has broken while TREND still holds. Reduce the position to lock "
+                    "in gains - this is a trim, not an exit. TREND is what decides whether "
+                    "you hold at all.",
+                    b[S.TRIM_LONG], "event", names),
         _nl_section("REMOVE LONG", SIG_STYLE[S.REMOVE_LONG][0],
-                    "Has broken TRADE and/or TREND in the last few sessions.",
+                    "TREND has broken. That is a regime change rather than a wobble, so "
+                    "the position comes off entirely.",
                     b[S.REMOVE_LONG], "event", names),
         _nl_section("ADD SHORT", SIG_STYLE[S.ADD_SHORT][0],
                     "Price is at or near the HIGH end of the Risk Range and the signal is "
                     "bearish TRADE and/or TREND. Short, or avoid if long-only.",
                     b[S.ADD_SHORT], "short", names),
+        _nl_section("TRIM SHORT", SIG_STYLE[S.TRIM_SHORT][0],
+                    "TRADE has been reclaimed while TREND is still bearish. Buy back some "
+                    "of the short - reduce it, do not close it.",
+                    b[S.TRIM_SHORT], "event", names),
+        _nl_section("COVER SHORT", SIG_STYLE[S.COVER_SHORT][0],
+                    "TREND has been reclaimed. Close the short out.",
+                    b[S.COVER_SHORT], "event", names),
         _nl_section("WATCHLIST", SIG_STYLE[S.WATCHLIST][0],
                     "At the low end of the Risk Range but the signal has broken. Worth "
                     "watching - no action yet. Wait for TREND support to hold before buying.",
                     b[S.WATCHLIST], "event", names),
-        _nl_section("COVER SHORT", SIG_STYLE[S.COVER_SHORT][0],
-                    "A broken name has reclaimed TRADE and/or TREND.", b[S.COVER_SHORT], "event", names),
     ])
     if not sections:
         sections = ('<tr><td style="padding:26px 0;color:#5a6270">No ETF triggered a signal '
@@ -734,7 +771,7 @@ def render_newsletter(df, params, generated=None, book=None):
         'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0">'
         '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s.title(),
                           counts.get(s, 0))
-        for s in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT))
+        for s in SIGNAL_ORDER)
 
     return """<div style="background:#f4f5f7;padding:22px 0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
 <table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center">
@@ -825,7 +862,7 @@ def main():
     counts = df["signal"].value_counts().to_dict()
     print("%s | %s" % (_universe_label(df), "  ".join(
         "%s=%d" % (k, counts.get(k, 0))
-        for k in (S.ADD_LONG, S.REMOVE_LONG, S.ADD_SHORT, S.WATCHLIST, S.COVER_SHORT))))
+        for k in SIGNAL_ORDER)))
     for k, v in paths.items():
         print("wrote %s" % v)
 

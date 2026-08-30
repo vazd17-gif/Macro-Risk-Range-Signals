@@ -31,7 +31,8 @@ import os
 import urllib.parse
 import urllib.request
 
-from .signals import ADD_LONG, ADD_SHORT, REMOVE_LONG, COVER_SHORT, vol_read
+from .signals import (ADD_LONG, ADD_SHORT, BREAKOUT, COVER_SHORT, REMOVE_LONG,
+                      TRIM_LONG, TRIM_SHORT, vol_read)
 
 STATE = ("out", ".alerted")
 TIMEOUT = 15
@@ -45,8 +46,11 @@ DIGEST_AT = 4
 # amber add short, blue cover short or a line reclaimed.
 TAGS = {
     ADD_LONG:     "green_circle",
+    BREAKOUT:     "rocket",
+    TRIM_LONG:    "orange_circle",
     REMOVE_LONG:  "red_circle",
     ADD_SHORT:    "orange_circle",
+    TRIM_SHORT:   "orange_circle",
     COVER_SHORT:  "large_blue_circle",
     "lost":       "red_circle",
     "reclaimed":  "large_blue_circle",
@@ -262,7 +266,7 @@ def events(df):
             continue
 
         sig = getattr(r, "signal", None)
-        if sig in (ADD_LONG, ADD_SHORT, REMOVE_LONG, COVER_SHORT):
+        if sig in TAGS and sig not in ("digest", "supportive", "risk_off", "mixed"):
             why = getattr(r, "why", "")
             why = "" if (why is None or why != why) else str(why).strip()
             out.append(Event(
@@ -270,7 +274,7 @@ def events(df):
                 title="%s %s" % (tk, sig),
                 body=nl.join(_detail(r) + ([why] if why else [])),
                 short="%s %s at %s%s" % (tk, sig, spot, " - " + why if why else ""),
-                urgent=sig in (REMOVE_LONG, COVER_SHORT),
+                urgent=sig in (REMOVE_LONG, TRIM_LONG, COVER_SHORT),
                 tag=TAGS.get(sig, "")))
     return out
 

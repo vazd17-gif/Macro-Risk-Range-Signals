@@ -129,29 +129,39 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         at_low = np.isfinite(pos) and pos <= edge
         at_high = np.isfinite(pos) and pos >= 1 - edge
 
-        sig, why = None, ""
-        if r.get("is_index"):
-            why = "volatility index - context only, not a position"
-        elif r.get("cash_like"):
-            why = r.get("why") or ""
-        elif any(c.startswith("lost") for c in crossed):
-            sig, why = S.REMOVE_LONG, " and ".join(crossed)
-        elif any(c.startswith("reclaimed") for c in crossed):
-            sig, why = S.COVER_SHORT, " and ".join(crossed)
-        elif at_low and now_trade is False and now_trend is False:
-            sig, why = S.WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
-        elif at_low and now_trade is False and now_trend:
-            sig, why = S.WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-        elif at_low and (now_trade or now_trend):
-            both = ("TRADE and TREND" if (now_trade and now_trend)
-                    else ("TRADE" if now_trade else "TREND"))
-            sig, why = S.ADD_LONG, "low end of RANGE, bullish %s" % both
-        elif at_high and (now_trade is False or now_trend is False):
-            both = ("TRADE and TREND" if (now_trade is False and now_trend is False)
-                    else ("TRADE" if now_trade is False else "TREND"))
-            sig, why = S.ADD_SHORT, "high end of RANGE, bearish %s" % both
-        else:
-            sig, why = r["signal"] if not crossed else None, r.get("why") or ""
+        # Intraday, a "break" is a line crossed since the close rather than one
+        # crossed within the last few sessions, so the crossings feed the same
+        # ladder the daily run uses. Everything downstream of that is identical,
+        # which is the point of it living in one function.
+        lost = [c for c in crossed if c.startswith("lost")]
+        recl = [c for c in crossed if c.startswith("reclaimed")]
+
+        # A line broken on an earlier close is still broken now, so the daily state
+        # is carried and only overturned by an intraday move the other way.
+        def _state(name):
+            broke = bool(r.get("broke_" + name.lower())) or any(name in c for c in lost)
+            back = bool(r.get("recl_" + name.lower())) or any(name in c for c in recl)
+            if any(name in c for c in lost):
+                back = False
+            elif any(name in c for c in recl):
+                broke = False
+            return broke, back
+
+        bt, rt = _state("TREND")
+        bd, rd = _state("TRADE")
+        sig, why = S.decide(
+            bool(r.get("is_index")), bool(r.get("cash_like")),
+            100 * (hi / lo - 1) if (np.isfinite(lo) and np.isfinite(hi) and lo > 0) else 0.0,
+            bt, bd, rt, rd,
+            " and ".join(crossed) or (r.get("why") or ""),
+            at_low, at_high, now_trade, now_trend,
+            outside_high=bool(np.isfinite(hi) and spot > hi))
+
+        # With nothing crossed and no edge read, the name keeps whatever the daily
+        # run concluded -- a signal earned on closes does not evaporate because
+        # spot drifted into the middle of the range at 11am.
+        if sig is None and not crossed and not r.get("is_index") and not r.get("cash_like"):
+            sig, why = r["signal"], r.get("why") or ""
 
         out.at[i, "spot"] = spot
         out.at[i, "live"] = True
@@ -171,8 +181,8 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
         out.at[i, "why"] = why
         out.at[i, "intraday"] = ", ".join(crossed)
 
-    order = {S.REMOVE_LONG: 0, S.ADD_LONG: 1, S.ADD_SHORT: 2,
-             S.WATCHLIST: 3, S.COVER_SHORT: 4}
+    order = {S.REMOVE_LONG: 0, S.TRIM_LONG: 1, S.BREAKOUT: 2, S.ADD_LONG: 3,
+             S.ADD_SHORT: 4, S.TRIM_SHORT: 5, S.COVER_SHORT: 6, S.WATCHLIST: 7}
     out["_r"] = out["signal"].map(order).fillna(9)
     out["_x"] = (~out["intraday"].astype(bool)).astype(int)   # today's crossings first
     out = (out.sort_values(["_x", "_r", "pos_in_range", "ticker"])

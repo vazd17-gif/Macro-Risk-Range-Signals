@@ -163,19 +163,28 @@ def open_positions(custom=None) -> pd.DataFrame:
 
 
 def _action(side, sig, at_low, at_high, event):
-    broke = event.startswith("broke")
-    reclaimed = event.startswith("reclaimed")
+    """The book follows the signal, which already distinguishes a trim from an exit.
+
+    It used to re-derive that from the event text, which meant any break at all
+    closed the position -- the book exited where the report only wanted a trim.
+    """
     if side == LONG:
-        if broke or sig == S.REMOVE_LONG:
-            return A_SELL, "%s - exit the long" % (event or "broke the line")
+        if sig == S.REMOVE_LONG:
+            return A_SELL, "%s - exit the long" % (event or "TREND broke")
+        if sig == S.TRIM_LONG:
+            return A_TRIM, "%s - sell some, TREND still holds" % (event or "TRADE broke")
+        if sig == S.BREAKOUT:
+            return A_LONG, "broke out above the RANGE and held - add"
         if at_high:
             return A_TRIM, "at the high end of the RANGE - sell some into strength"
         if at_low and sig == S.ADD_LONG:
             return A_LONG, "at the low end and still bullish - add"
         return A_HOLD, ""
     # short
-    if reclaimed or sig == S.COVER_SHORT:
-        return A_COVER, "%s - buy the short back to close it out" % (event or "reclaimed the line")
+    if sig == S.COVER_SHORT:
+        return A_COVER, "%s - buy the short back to close it out" % (event or "TREND reclaimed")
+    if sig == S.TRIM_SHORT:
+        return A_COVER_SOME, "%s - buy back some, TREND still bearish" % (event or "TRADE reclaimed")
     if at_low:
         return A_COVER_SOME, "at the low end of the RANGE - buy back some of the short"
     if at_high and sig == S.ADD_SHORT:

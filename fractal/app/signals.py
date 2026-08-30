@@ -57,6 +57,9 @@ CROSS_BUFFER = 0.02
 # signal None and a `cash_like` flag.
 
 ADD_LONG = "ADD LONG"
+BREAKOUT = "BREAKOUT"
+TRIM_LONG = "TRIM LONG"
+TRIM_SHORT = "TRIM SHORT"
 REMOVE_LONG = "REMOVE LONG"
 ADD_SHORT = "ADD SHORT"
 COVER_SHORT = "COVER SHORT"
@@ -183,27 +186,10 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         event = "reclaimed %s" % " and ".join(
             [n for n, b in (("TREND", recl_trend), ("TRADE", recl_trade)) if b])
 
-    sig, why = None, ""
-    if is_index(ticker):
-        why = "volatility index - context only, not a position"
-    elif cash_like:
-        why = "range only %.2f%% wide - too tight for a signal" % width_pct
-    elif broke_trend or broke_trade:
-        sig, why = REMOVE_LONG, event                      # a fresh break is a sell
-    elif at_low and trade_bull is False and trend_bull is False:
-        sig, why = WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
-    elif at_low and trade_bull is False and trend_bull:
-        sig, why = WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    elif at_low and (trade_bull or trend_bull):
-        both = ("TRADE and TREND" if (trade_bull and trend_bull)
-                else ("TRADE" if trade_bull else "TREND"))
-        sig, why = ADD_LONG, "low end of RANGE, bullish %s" % both
-    elif at_high and (trade_bull is False or trend_bull is False):
-        both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
-                else ("TRADE" if trade_bull is False else "TREND"))
-        sig, why = ADD_SHORT, "high end of RANGE, bearish %s" % both
-    elif recl_trend or recl_trade:
-        sig, why = COVER_SHORT, event                      # cover / watch for re-entry
+    sig, why = decide(is_index(ticker), cash_like, width_pct,
+                      broke_trend, broke_trade, recl_trend, recl_trade, event,
+                      at_low, at_high, trade_bull, trend_bull,
+                      outside_high=bool(spot > hi))
 
     if young and sig:
         why = (why + " " if why else "") + "(short history: %d bars)" % bars
@@ -246,9 +232,99 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
         "young": bool(young),
         "at_low": bool(at_low),
         "at_high": bool(at_high),
+        # Carried so the intraday re-pricer can see a break that happened on an
+        # earlier close. Without them it only knows about lines crossed since the
+        # open, and a name that broke two days ago and has since drifted to the low
+        # end reads as a fresh WATCHLIST instead of the exit it still is.
+        "broke_trend": bool(broke_trend),
+        "broke_trade": bool(broke_trade),
+        "recl_trend": bool(recl_trend),
+        "recl_trade": bool(recl_trade),
         "outside_low": bool(spot < lo),
         "outside_high": bool(spot > hi),
     }
+
+
+def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
+           recl_trend, recl_trade, event, at_low, at_high,
+           trade_bull, trend_bull, outside_high=False):
+    """(signal, why) from a name's current state. The only place the ladder lives.
+
+    It used to be written twice -- once against closes here and once against live
+    quotes in `live.reprice` -- which meant every rule change had to be made in two
+    places and stayed correct only by luck.
+
+    Order matters, and encodes what outranks what: a broken TREND is a regime
+    change and beats everything, a broken TRADE with TREND intact is a trim rather
+    than an exit, and the range-edge reads come last because they describe where
+    price is rather than what just happened.
+    """
+    if is_idx:
+        return None, "volatility index - context only, not a position"
+    if cash_like:
+        return None, "range only %.2f%% wide - too tight for a signal" % width_pct
+
+    # TREND is the line that decides whether you hold the position at all; TRADE
+    # only decides how much. So a TREND break is the exit, and a TRADE break with
+    # TREND still bullish is a trim -- calling that an exit overstated about a third
+    # of the sell list. A TRADE break with TREND already bearish is not a trim
+    # either: there should be no long left to trim, so it reads as the exit.
+    if broke_trend:
+        return REMOVE_LONG, event + " - TREND is the position, exit it"
+    if broke_trade and trend_bull:
+        return TRIM_LONG, event + " with TREND still bullish - trim, do not exit"
+    if broke_trade:
+        return REMOVE_LONG, event + " with TREND already bearish - exit"
+
+    # Price above the top of the range with both durations bullish is a breakout,
+    # not a reason to sell into strength. Measured on the close, so "holds there"
+    # is inherent: an intraday poke above that closes back inside does not count.
+    if outside_high and trade_bull and trend_bull:
+        return BREAKOUT, "broke out above the RANGE high, bullish TRADE and TREND"
+
+    if at_low and trade_bull is False and trend_bull is False:
+        return WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
+    if at_low and trade_bull is False and trend_bull:
+        return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
+    if at_low and (trade_bull or trend_bull):
+        both = ("TRADE and TREND" if (trade_bull and trend_bull)
+                else ("TRADE" if trade_bull else "TREND"))
+        return ADD_LONG, "low end of RANGE, bullish %s" % both
+    if at_high and (trade_bull is False or trend_bull is False):
+        both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
+                else ("TRADE" if trade_bull is False else "TREND"))
+        return ADD_SHORT, "high end of RANGE, bearish %s" % both
+    # The mirror image on the short side. Reclaiming TREND ends the short;
+    # reclaiming TRADE while TREND is still bearish only reduces it.
+    if recl_trend:
+        return COVER_SHORT, event + " - TREND reclaimed, close the short"
+    if recl_trade and trend_bull is False:
+        return TRIM_SHORT, event + " with TREND still bearish - buy back some"
+    if recl_trade:
+        return COVER_SHORT, event + " - close the short"
+    return None, ""
+
+
+# Hedgeye reads the VIX as an absolute level, not a direction: what regime you are
+# in decides whether a signal is actionable at all. This is deliberately separate
+# from our own bearish/bullish read of the VIX, because the two can disagree -- a
+# VIX at 32 and falling is supportive by direction and defensive by level, and the
+# level is the one that governs position size.
+VIX_BUCKETS = (
+    (20.0, "INVESTABLE", "buy dips, normal risk", "supportive"),
+    (29.0, "CHOP", "trade the range, be aggressive on longs", "mixed"),
+    (None, "DEFENSIVE", "preserve capital", "risk_off"),
+)
+
+
+def vix_bucket(level):
+    """(name, guidance, stance) for a VIX level. 9-19, 20-29, 29+."""
+    if level is None or level != level:
+        return "", "", ""
+    for ceiling, name, note, stance in VIX_BUCKETS:
+        if ceiling is None or level < ceiling:
+            return name, note, stance
+    return "", "", ""
 
 
 def vol_read(cross="", at_low=False, at_high=False):
@@ -338,7 +414,11 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=EDGE,
     return out.sort_values(["_rank", "_edge", "ticker"]).drop(columns=["_rank", "_edge"]).reset_index(drop=True)
 
 
+# Long side first, then short, each trim beside the full action it reduces.
+SIGNALS = (ADD_LONG, BREAKOUT, TRIM_LONG, REMOVE_LONG,
+           ADD_SHORT, TRIM_SHORT, COVER_SHORT, WATCHLIST)
+
+
 def buckets(df):
     """Signal name -> rows, in the order the newsletter presents them."""
-    return {name: df[df["signal"] == name]
-            for name in (ADD_LONG, REMOVE_LONG, ADD_SHORT, WATCHLIST, COVER_SHORT)}
+    return {name: df[df["signal"] == name] for name in SIGNALS}
