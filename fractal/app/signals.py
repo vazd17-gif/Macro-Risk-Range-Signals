@@ -127,17 +127,19 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     at_low = pos <= edge
     at_high = pos >= 1 - edge
 
-    # Whether the previous close was already outside the range, measured against
-    # that session's own edges rather than today's -- the envelope moves, so
-    # comparing yesterday's close to today's low would report breaks that never
-    # happened.
+    # Whether the previous close was already at an edge, measured against that
+    # session's own range rather than today's -- the envelope moves, so comparing
+    # yesterday's close to today's low would report breaks that never happened.
+    # This uses the same `edge` band as the trigger, so "held" means still in the
+    # zone the break was called from.
     was_above = was_below = False
     if len(close) > 1:
         p_close = float(close.iloc[-2])
         p_lo = float(rng["range_low"].iloc[-2])
         p_hi = float(rng["range_high"].iloc[-2])
-        if np.isfinite(p_lo) and np.isfinite(p_hi):
-            was_above, was_below = p_close > p_hi, p_close < p_lo
+        if np.isfinite(p_lo) and np.isfinite(p_hi) and p_hi > p_lo:
+            p_pos = (p_close - p_lo) / (p_hi - p_lo)
+            was_above, was_below = p_pos >= 1 - edge, p_pos <= edge
 
     # Volume against its 1-month and 3-month baselines. Volume is lognormal and its
     # scale differs by orders of magnitude across the list, so "unusual" is measured
@@ -147,6 +149,7 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     # deviation is normally quoted.
     vol = vol_1m = vol_3m = v1r = v3r = vol_z = vol_z1 = np.nan
     vol_flag = ""
+    prev_surge = False
     volume = ohlc.get("Volume")
     if volume is not None:
         v = pd.Series(volume).reindex(close.index).astype(float)
@@ -160,12 +163,19 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
             # flag, because 21 observations give a noisy standard deviation; the
             # 1-month z is reported alongside because a fund whose volume has been
             # elevated for weeks reads very differently on the two windows.
-            lv = np.log(v.replace(0, np.nan)).dropna()
+            lv = np.log(v.replace(0, np.nan))
+            # Computed as a series rather than a single value: the failed-break
+            # test needs to know whether YESTERDAY was a surge, because a break
+            # only failed if there was a break, and a break needed volume.
+            z1s = (lv - lv.rolling(VOL_W1).mean()) / lv.rolling(VOL_W1).std(ddof=1)
+            z3s = (lv - lv.rolling(VOL_W3).mean()) / lv.rolling(VOL_W3).std(ddof=1)
+            surge_s = (z1s >= VOL_Z) | (z3s >= VOL_Z)
+            prev_surge = bool(surge_s.iloc[-2]) if len(surge_s) > 1 else False
             if np.isfinite(vol) and vol > 0:
                 for win, name in ((VOL_W1, "z1"), (VOL_W3, "z3")):
-                    if len(lv) <= win:
+                    if len(lv.dropna()) <= win:
                         continue
-                    w = lv.iloc[-win:]
+                    w = lv.dropna().iloc[-win:]
                     sd = float(w.std(ddof=1))
                     if sd > 0:
                         z = float((np.log(vol) - w.mean()) / sd)
@@ -203,6 +213,12 @@ def evaluate(ticker, ohlc, params, edge=EDGE, fresh_days=FRESH_DAYS,
     # 3-month window is the steadier read; the 1-month catches a name whose volume
     # has only just picked up, which is exactly the breakout case.
     vol_surge = bool(max([z for z in (vol_z, vol_z1) if np.isfinite(z)] or [0]) >= VOL_Z)
+
+    # A break only failed if there was one, and a break needed volume. Without this
+    # any name that merely sat at an edge yesterday and drifted back read as a
+    # breakout add to cut -- NVDA, CIBR, IGV and BAC all did, none having broken out.
+    was_above = was_above and prev_surge
+    was_below = was_below and prev_surge
 
     sig, why = decide(is_index(ticker), cash_like, width_pct,
                       broke_trend, broke_trade, recl_trend, recl_trade, event,
@@ -299,36 +315,39 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     if broke_trade:
         return REMOVE_LONG, event + " with TREND already bearish - exit"
 
-    # Leaving the range is the one move the range itself cannot price, so it is
-    # read separately from where price sits inside it. Two things have to be true
-    # for it to count as a break rather than a poke: it happened on the close, and
-    # it happened on volume. A range break on ordinary volume is usually noise that
-    # mean-reverts the next session; 2 sigma of volume is what says somebody meant
-    # it. TREND still decides direction, per the rest of the ladder -- price spiking
-    # above the range while TREND is bearish is a squeeze, not a breakout.
-    if outside_high and vol_surge and trend_bull:
-        held = " and has held above" if was_above else " - watch whether it holds"
-        return BREAKOUT, "broke out above the RANGE high on heavy volume%s" % held
-    if outside_low and vol_surge and trend_bull is False:
-        held = " and has stayed below" if was_below else " - watch whether it holds"
-        return BREAKDOWN, "broke down below the RANGE low on heavy volume%s" % held
+    # A break is read at the EDGE of the range rather than only outside it. Waiting
+    # for price to clear the high tick misses the move: WEAT closed 4 cents inside
+    # its range high on 2 sigma of volume, which is a breakout being bought, not a
+    # name to trim into. So the same outer 15% the alert strip uses marks the zone,
+    # and volume decides whether being there means anything -- at the edge on
+    # ordinary volume is drift, and mean-reverts more often than it continues.
+    # TREND still sets direction: price pressing the high while TREND is bearish is
+    # a squeeze, and still reads as a short.
+    if at_high and vol_surge and trend_bull:
+        held = " and has held" if was_above else " - watch whether it holds"
+        return BREAKOUT, "at the RANGE high on heavy volume%s" % held
+    if at_low and vol_surge and trend_bull is False:
+        held = " and has held" if was_below else " - watch whether it holds"
+        return BREAKDOWN, "at the RANGE low on heavy volume%s" % held
 
-    # Outside the range without the volume to back it. Not a breakout, but not
-    # nothing either -- it is the name to watch for confirmation tomorrow.
+    # Right through the range edge but without the volume to back it. Not a break,
+    # but the name to watch for confirmation tomorrow.
     if outside_high and trend_bull and not was_above:
         return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
     if outside_low and trend_bull is False and not was_below:
         return WATCHLIST, "below the RANGE low but not on volume - watch for confirmation"
 
-    # A break that closed back inside the range failed, and the add taken on it comes
-    # off. This is a trim rather than an exit: what is cut is the breakout tranche,
-    # not the core position, which TREND still governs. With no position sizing in
-    # the book a trim is a full exit in practice, which is the conservative direction
-    # to be wrong in.
-    if was_above and not outside_high:
-        return TRIM_LONG, "broke out above the RANGE but failed to hold - cut the breakout add"
-    if was_below and not outside_low:
-        return TRIM_SHORT, "broke down below the RANGE but failed to hold - cover the breakdown add"
+    # The break failed and the add taken on it comes off. A trim rather than an
+    # exit: what is cut is the breakout tranche, not the core position, which TREND
+    # still governs. With no position sizing in the book that is a full exit in
+    # practice, which is the conservative direction to be wrong in.
+    # The direction test mirrors the trigger. Without it a name whose TREND is
+    # bullish was told to cover a breakdown add that could never have been taken,
+    # because BREAKDOWN requires bearish TREND in the first place.
+    if was_above and not at_high and trend_bull:
+        return TRIM_LONG, "broke out but failed to hold the RANGE high - cut the breakout add"
+    if was_below and not at_low and trend_bull is False:
+        return TRIM_SHORT, "broke down but failed to hold the RANGE low - cover the breakdown add"
 
     if at_low and trade_bull is False and trend_bull is False:
         return WATCHLIST, "at the low end but bearish TRADE and TREND - watch, no action yet"
