@@ -83,7 +83,17 @@ def range_flags(pos, edge_buy, edge_sell):
 
 
 FRESH_DAYS = 3       # a break/reclaim counts as an event for this many sessions
-MIN_RANGE_PCT = 2.0  # below this range width an ETF is cash-like: no signals
+# Below this range width an instrument is cash-like and raises no signal. The
+# number is a tradeability floor, not a statistical one: a range this narrow means
+# the edge-to-edge move is smaller than the cost of capturing it.
+#
+# It was 2.0, which suppressed ten of the thirty-nine positions Hedgeye actually
+# runs -- including every currency ETF. The universe sorts by width with a gap
+# right here: the genuine cash proxies sit at 0.4 to 1.2 (T-bills, CLOs, high
+# yield, short corporates) and the currencies at 1.4 to 1.7, with nothing between.
+# 1.25 lands in that gap. It is a soft boundary and widths move, so a name near it
+# will drift in and out; that is preferable to excluding a whole asset class.
+MIN_RANGE_PCT = 1.25
 SETTLE_MULT = 3      # an EMA needs roughly 3x its span of history to shed its seed
 VOL_W1, VOL_W3 = 21, 63     # 1-month and 3-month volume baselines (TRADE / TREND)
 VOL_Z = 2.0          # |z| on log volume beyond which a session counts as an outlier
@@ -416,7 +426,14 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
     if buy_low and trend_bull:
         return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    if sell_high and (trade_bull is False or trend_bull is False):
+    # ...but not into a fresh reclaim. A break outranks every range read because it
+    # sits at the top of this ladder; a reclaim is the same kind of event and has to
+    # outrank the mirror read, or the model adds to a short on the very day that
+    # short's line was taken back. Hedgeye covered UUP on the session it reclaimed
+    # TRADE while sitting at the top of its range; reading that as "add to the
+    # short" is the wrong side of the same trade.
+    if sell_high and not (recl_trade or recl_trend) and (
+            trade_bull is False or trend_bull is False):
         both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
                 else ("TRADE" if trade_bull is False else "TREND"))
         return ADD_SHORT, "high end of RANGE, bearish %s" % both
