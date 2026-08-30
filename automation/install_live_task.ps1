@@ -23,7 +23,10 @@ $trigger  = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesda
 $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At $Start `
                          -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes) `
                          -RepetitionDuration $span).Repetition
+# The 9-minute limit is deliberate: it has to expire before the next 10-minute
+# tick, so a hung run can never overlap its successor.
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable `
+              -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
               -ExecutionTimeLimit (New-TimeSpan -Minutes 9) -MultipleInstances IgnoreNew
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `

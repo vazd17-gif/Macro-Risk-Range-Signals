@@ -21,7 +21,11 @@ if (-not (Test-Path $script)) { throw "not found: $script" }
 
 $action    = New-ScheduledTaskAction -Execute $script -WorkingDirectory $root
 $trigger   = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At $Time
+# WakeToRun matters: this machine sleeps after 30 minutes idle, and a sleeping PC
+# silently skips the run. The battery switches are defaults that would block a
+# laptop from ever refreshing away from the desk.
 $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable `
+                -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
                 -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
