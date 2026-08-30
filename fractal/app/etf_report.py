@@ -33,9 +33,9 @@ SIG_STYLE = {
                               "above the high end"),
     "SELL SOME":  ("#d9a441", "Sell some - TRADE has broken while TREND still holds; "
                               "trim, do not exit"),
-    "SELL":       ("#ef5350", "Sell - TREND has broken, or a volume breakdown"),
+    "SELL":       ("#ef5350", "Sell - TREND has broken; the long comes off"),
     "SELL SHORT": ("#c0392b", "Sell short - at the high end of the RANGE with a "
-                              "bearish signal"),
+                              "bearish signal, or a volume breakdown below the low end"),
     "BUY SOME":   ("#5c9ded", "Buy some - TRADE reclaimed while TREND is still bearish; "
                               "buy back part of the short"),
     "COVER SHORT":("#5c9ded", "Cover - TREND reclaimed; close the short out"),
@@ -715,10 +715,11 @@ def render_newsletter(df, params, generated=None, book=None):
         "SELL SOME": ("Trim. TRADE has broken while TREND still holds, so the position "
                       "comes down but does not come off - TREND is what decides whether "
                       "you hold at all."),
-        "SELL": ("Sell. TREND has broken, which is a regime change rather than a wobble, "
-                 "or price has broken DOWN through the low end on heavy volume."),
-        "SELL SHORT": ("Short, or avoid if long-only. Price at or near the HIGH end of "
-                       "the Risk Range with a bearish signal."),
+        "SELL": ("Sell. TREND has broken, which is a regime change rather than a "
+                 "wobble, so the long comes off entirely."),
+        "SELL SHORT": ("Open a short, or avoid if long-only. Price at or near the HIGH "
+                       "end of the Risk Range with a bearish signal, or a breakdown "
+                       "through the LOW end on heavy volume. Each line says which."),
         "BUY SOME": ("Buy back part of the short. TRADE has been reclaimed while TREND "
                      "is still bearish - reduce it, do not close it."),
         "COVER SHORT": ("TREND has been reclaimed. Close the short out."),
