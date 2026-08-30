@@ -266,13 +266,18 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     # An "event" is a fresh line flip; a "signal" is the action to take. They are
     # tracked separately so a reclaim somewhere mid-range cannot crowd out the
     # range-edge signals, which are the point of the report.
-    event = ""
+    # Both halves are reported when both happened. Reporting only the break left
+    # EWQ reading "broke TRADE - TREND reclaimed, close the short", which contradicts
+    # itself: the ladder had taken the reclaim branch while the event text still
+    # described the break.
+    parts = []
     if broke_trend or broke_trade:
-        event = "broke %s" % " and ".join(
-            [n for n, b in (("TREND", broke_trend), ("TRADE", broke_trade)) if b])
-    elif recl_trend or recl_trade:
-        event = "reclaimed %s" % " and ".join(
-            [n for n, b in (("TREND", recl_trend), ("TRADE", recl_trade)) if b])
+        parts.append("broke %s" % " and ".join(
+            [n for n, b in (("TREND", broke_trend), ("TRADE", broke_trade)) if b]))
+    if recl_trend or recl_trade:
+        parts.append("reclaimed %s" % " and ".join(
+            [n for n, b in (("TREND", recl_trend), ("TRADE", recl_trade)) if b]))
+    event = ", ".join(parts)
 
     # A range break counts as volume-confirmed if either baseline says so. The
     # 3-month window is the steadier read; the 1-month catches a name whose volume
@@ -289,7 +294,8 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
                       broke_trend, broke_trade, recl_trend, recl_trade, event,
                       buy_low, sell_low, buy_high, sell_high, trade_bull, trend_bull,
                       outside_high=bool(spot > hi), outside_low=bool(spot < lo),
-                      vol_surge=vol_surge, was_above=was_above, was_below=was_below)
+                      vol_surge=vol_surge, was_above=was_above, was_below=was_below,
+                      trend_age=d_trend, trade_age=d_trade)
 
     if young and sig:
         why = (why + " " if why else "") + "(short history: %d bars)" % bars
@@ -361,43 +367,70 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
 def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
            recl_trend, recl_trade, event, buy_low, sell_low, buy_high, sell_high,
            trade_bull, trend_bull, outside_high=False, outside_low=False,
-           vol_surge=False, was_above=False, was_below=False):
+           vol_surge=False, was_above=False, was_below=False,
+           trend_age=None, trade_age=None):
     """(signal, why) from a name's current state. The only place the ladder lives.
 
     It used to be written twice -- once against closes here and once against live
     quotes in `live.reprice` -- which meant every rule change had to be made in two
     places and stayed correct only by luck.
 
-    Order matters, and encodes what outranks what: a broken TREND is a regime
-    change and beats everything, a broken TRADE with TREND intact is a trim rather
-    than an exit, and the range-edge reads come last because they describe where
-    price is rather than what just happened.
+    Three tiers, in order: TREND, then TRADE, then RANGE. TREND decides whether you
+    hold at all, TRADE decides how much, and where price sits in the range only
+    matters once neither line has moved. Events outrank positions in both
+    directions -- a reclaim ranks with a break, not below the range reads, or the
+    model adds to a short on the day that short's line was taken back.
     """
     if is_idx:
         return None, "volatility index - context only, not a position"
     if cash_like:
         return None, "range only %.2f%% wide - too tight for a signal" % width_pct
 
-    # TREND is the line that decides whether you hold the position at all; TRADE
-    # only decides how much. So a TREND break is the exit, and a TRADE break with
-    # TREND still bullish is a trim -- calling that an exit overstated about a third
-    # of the sell list. A TRADE break with TREND already bearish is not a trim
-    # either: there should be no long left to trim, so it reads as the exit.
-    if broke_trend:
+    # ---- 1. TREND ----------------------------------------------------------
+    # TREND decides whether you hold the position at all, so nothing outranks it.
+    # A break is the exit and a reclaim ends the short, whatever price is doing
+    # inside the range at that moment.
+    #
+    # Ranking by duration must not become ranking by staleness. Both flags stay
+    # true for FRESH_DAYS, so a TREND event from three sessions ago would otherwise
+    # outrank a TRADE break happening now -- QTUM reclaimed TREND on Monday and
+    # broke TRADE on Friday, and read "close the short" instead of "trim". When the
+    # two conflict the more recent one wins; a tie goes to TREND.
+    trend_first = (trend_age is None or trade_age is None
+                   or not (broke_trade or recl_trade) or trend_age <= trade_age)
+    if broke_trend and trend_first:
         return REMOVE_LONG, event + " - TREND is the position, exit it"
+    if recl_trend and trend_first:
+        return COVER_SHORT, event + " - TREND reclaimed, close the short"
+
+    # ---- 2. TRADE ----------------------------------------------------------
+    # TRADE decides how much. A break with TREND still bullish is a trim, not an
+    # exit -- calling it an exit overstated about a third of the sell list. With
+    # TREND already bearish there is no long left to trim, so it reads as the exit.
+    # The reclaim side mirrors it: TRADE back with TREND still bearish reduces the
+    # short, and reclaiming it once TREND has already turned closes the short out.
     if broke_trade and trend_bull:
         return TRIM_LONG, event + " with TREND still bullish - trim, do not exit"
     if broke_trade:
         return REMOVE_LONG, event + " with TREND already bearish - exit"
+    if recl_trade and trend_bull is False:
+        return TRIM_SHORT, event + " with TREND still bearish - buy back some"
+    if recl_trade:
+        return COVER_SHORT, event + " - close the short"
+    # A TREND event that yielded to a fresher TRADE one still stands behind it.
+    if broke_trend:
+        return REMOVE_LONG, event + " - TREND is the position, exit it"
+    if recl_trend:
+        return COVER_SHORT, event + " - TREND reclaimed, close the short"
 
-    # A break is read at the EDGE of the range rather than only outside it. Waiting
-    # for price to clear the high tick misses the move: WEAT closed 4 cents inside
-    # its range high on 2 sigma of volume, which is a breakout being bought, not a
-    # name to trim into. So the same outer band the alert strip uses marks the zone,
-    # and volume decides whether being there means anything -- at the edge on
-    # ordinary volume is drift, and mean-reverts more often than it continues.
-    # TREND still sets direction: price pressing the high while TREND is bearish is
-    # a squeeze, and still reads as a short.
+    # ---- 3. RANGE ----------------------------------------------------------
+    # Where price sits, which only matters once neither duration line has moved.
+    # A break is read at the EDGE of the range rather than only outside it: WEAT
+    # closed 4 cents inside its range high on 2 sigma of volume, which is a breakout
+    # being bought, not a name to trim into. Volume decides whether being at an edge
+    # means anything -- on ordinary volume it is drift, and mean-reverts more often
+    # than it continues. TREND still sets direction, so price pressing the high while
+    # TREND is bearish is a squeeze and reads as a short.
     if buy_high and vol_surge and trend_bull:
         held = " and has held" if was_above else " - watch whether it holds"
         return BREAKOUT, "at the RANGE high on heavy volume%s" % held
@@ -405,59 +438,36 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         held = " and has held" if was_below else " - watch whether it holds"
         return BREAKDOWN, "at the RANGE low on heavy volume%s" % held
 
-    # The break failed and the add taken on it comes off. A trim rather than an
-    # exit: what is cut is the breakout tranche, not the core position, which TREND
-    # still governs. With no position sizing in the book that is a full exit in
-    # practice, which is the conservative direction to be wrong in.
-    # The direction test mirrors the trigger. Without it a name whose TREND is
-    # bullish was told to cover a breakdown add that could never have been taken,
-    # because BREAKDOWN requires bearish TREND in the first place.
+    # A break that failed takes the add off. A trim rather than an exit: what is cut
+    # is the breakout tranche, not the core position, which TREND still governs. The
+    # direction test mirrors the trigger, or a bullish-TREND name gets told to cover
+    # a breakdown add that could never have been taken.
     if was_above and not buy_high and trend_bull:
         return TRIM_LONG, "broke out but failed to hold the RANGE high - cut the breakout add"
     if was_below and not sell_low and trend_bull is False:
         return TRIM_SHORT, "broke down but failed to hold the RANGE low - cover the breakdown add"
 
-    # A long is never opened against a bearish TREND. TREND decides whether you hold
-    # at all, so price being cheap inside a downtrend is not a buy -- it is the same
-    # mistake as reading a spike above the range as a breakout when TREND disagrees.
-    # Those names fall through to the short-side branches below, where a reclaim can
-    # still produce a cover or a partial cover, and otherwise end up on the watch.
+    # A long is never opened against a bearish TREND. Price being cheap inside a
+    # downtrend is not a buy -- the same mistake as reading a spike above the range
+    # as a breakout when TREND disagrees.
     if buy_low and trend_bull and trade_bull:
         return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
     if buy_low and trend_bull:
         return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    # ...but not into a fresh reclaim. A break outranks every range read because it
-    # sits at the top of this ladder; a reclaim is the same kind of event and has to
-    # outrank the mirror read, or the model adds to a short on the very day that
-    # short's line was taken back. Hedgeye covered UUP on the session it reclaimed
-    # TRADE while sitting at the top of its range; reading that as "add to the
-    # short" is the wrong side of the same trade.
-    if sell_high and not (recl_trade or recl_trend) and (
-            trade_bull is False or trend_bull is False):
+    if sell_high and (trade_bull is False or trend_bull is False):
         both = ("TRADE and TREND" if (trade_bull is False and trend_bull is False)
                 else ("TRADE" if trade_bull is False else "TREND"))
         return ADD_SHORT, "high end of RANGE, bearish %s" % both
-    # The mirror image on the short side. Reclaiming TREND ends the short;
-    # reclaiming TRADE while TREND is still bearish only reduces it.
-    if recl_trend:
-        return COVER_SHORT, event + " - TREND reclaimed, close the short"
-    if recl_trade and trend_bull is False:
-        return TRIM_SHORT, event + " with TREND still bearish - buy back some"
-    if recl_trade:
-        return COVER_SHORT, event + " - close the short"
 
     # Cheap, but inside a downtrend and with nothing reclaimed. Worth watching, not
     # worth owning.
     if buy_low and trend_bull is False:
         return WATCHLIST, "at the low end but TREND is bearish - not a buy"
 
-    # Through a range edge without the volume to back it. This is the weakest read
-    # on the ladder and so it comes last. It used to sit above the reclaim branches,
-    # where it swallowed them: a duration line can sit outside the range -- GII
-    # closed with TREND at 75.46 against a range high of 75.45 -- so reclaiming that
-    # line necessarily puts price outside the range, and the reclaim was reported as
-    # an unconfirmed breakout instead. Breaks were unaffected, which made the two
-    # directions behave differently for no reason.
+    # Through a range edge without the volume to back it: the weakest read here, so
+    # it comes last. A duration line can sit outside the range -- GII closed with
+    # TREND at 75.46 against a range high of 75.45 -- so when this sat higher up it
+    # swallowed reclaims, reporting them as unconfirmed breakouts.
     if outside_high and trend_bull and not was_above:
         return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
     if outside_low and trend_bull is False and not was_below:

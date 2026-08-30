@@ -189,7 +189,12 @@ def reprice(df, px=None, edge=S.EDGE, times=None):
             # the daily run computed, so its own was_above/was_below carry over and
             # only `at_high` is re-read against live spot. Deriving the flag from
             # the daily signal instead lost the failed-break state a day early.
-            was_above=bool(r.get("was_above")), was_below=bool(r.get("was_below")))
+            was_above=bool(r.get("was_above")), was_below=bool(r.get("was_below")),
+            # An intraday crossing happened now, so it is age 0; anything carried
+            # from the close keeps the age the daily run measured.
+            trend_age=0 if (bt or rt) and not r.get("broke_trend") and not r.get("recl_trend")
+                      else r.get("trend_flip_days"),
+            trade_age=0 if crossed else r.get("trade_flip_days"))
 
         # With nothing crossed and no edge read, the name keeps whatever the daily
         # run concluded -- a signal earned on closes does not evaporate because
