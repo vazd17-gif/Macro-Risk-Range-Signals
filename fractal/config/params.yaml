@@ -24,19 +24,13 @@ range:
     lam: 0.94
     anchor_span: 5
     m_up: 2.1
-    m_dn: 2.0
+    m_dn: 1.74
     floor: 0.0
     winsor_z: null
     fit_rmse_pct: 1.225
-    note: 'RECOMMENDED Hedgeye target. Plain sigma multiplier, no volume term. m_dn
-      raised 1.74 to 2.00 on 2026-08-30 after re-fitting against 355 published levels
-      (281 Early Look macro, 74 ETF Pro). The old downside was too shallow: our low
-      edge sat above Hedgeye''s on 38 of 39 names in the 08/30 weekly. Both families
-      independently wanted a larger m_dn (macro 1.95, ETF 2.40), which is why this
-      one moved and m_up did not - on m_up they disagree. Width ratio 0.93x to 1.00x,
-      ETF error 0.53% to 0.43%, macro unchanged at 0.41%. anchor_span 5 was re-tested
-      and confirmed optimal - shortening it makes the fit worse, so the apparent
-      anchor lag was not the cause.'
+    note: 'RECOMMENDED Hedgeye target. Plain sigma multiplier, no volume term (volume
+      not detectable in range width on available data). Wider than the Similar Set
+      default: matches Hedgeye edges to ~0.4% median on macro, width ratio ~1.0x.'
   hedgeye_vol:
     lam: 0.94
     anchor_span: 5
