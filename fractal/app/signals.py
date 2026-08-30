@@ -378,20 +378,20 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
 # VIX at 32 and falling is supportive by direction and defensive by level, and the
 # level is the one that governs position size.
 VIX_BUCKETS = (
-    (20.0, "INVESTABLE", "buy dips, normal risk", "supportive"),
-    (29.0, "CHOP", "trade the range, be aggressive on longs", "mixed"),
-    (None, "DEFENSIVE", "preserve capital", "risk_off"),
+    (20.0, "INVESTABLE", "9-19", "buy dips, normal risk", "supportive"),
+    (29.0, "CHOP", "20-29", "trade the range, be aggressive on longs", "mixed"),
+    (None, "DEFENSIVE", "29+", "preserve capital", "risk_off"),
 )
 
 
 def vix_bucket(level):
-    """(name, guidance, stance) for a VIX level. 9-19, 20-29, 29+."""
+    """(name, band, guidance, stance) for a VIX level. 9-19, 20-29, 29+."""
     if level is None or level != level:
-        return "", "", ""
-    for ceiling, name, note, stance in VIX_BUCKETS:
+        return "", "", "", ""
+    for ceiling, name, band, note, stance in VIX_BUCKETS:
         if ceiling is None or level < ceiling:
-            return name, note, stance
-    return "", "", ""
+            return name, band, note, stance
+    return "", "", "", ""
 
 
 def vol_read(cross="", at_low=False, at_high=False):

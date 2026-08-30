@@ -73,6 +73,67 @@ def _universe_label(df):
     return ", ".join(parts) or "%d names" % len(df)
 
 
+def _vix_meter(idx, email=False):
+    """The three VIX buckets as a lit meter, with the live one filled.
+
+    Rendered as a meter rather than a sentence because the bucket is a severity
+    scale and severity reads faster as position than as words -- you want to see
+    how far along the scale you are, not only which name you landed on. The inactive
+    buckets stay visible for the same reason: "INVESTABLE" means little without the
+    two worse states beside it.
+
+    Email clients cannot be trusted with flexbox, so the same thing is laid out as
+    a table when `email` is set.
+    """
+    if idx.empty:
+        return ""
+    vix = idx[idx["ticker"] == "VIX"]
+    if not len(vix):
+        return ""
+    lvl = float(vix.iloc[0]["spot"])
+    live, _band, _note, _stance = S.vix_bucket(lvl)
+    if not live:
+        return ""
+
+    cells = []
+    for _ceiling, name, band, note, stance in S.VIX_BUCKETS:
+        col = STANCE_COL.get(stance, "#8b94a5")
+        on = name == live
+        if on:
+            style = ("background:%s;border:1px solid %s;color:#0d0f13" % (col, col))
+            sub, subcol = note, "#0d0f13"
+        else:
+            style = ("background:transparent;border:1px solid %s44;color:%s99"
+                     % (col, col))
+            sub, subcol = band, "%s88" % col
+        cells.append((style, name, band, sub, subcol, on))
+
+    if email:
+        tds = "".join(
+            '<td width="33%%" style="%s;border-radius:6px;padding:7px 9px;'
+            'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">'
+            '<div style="font-size:11px;font-weight:700;letter-spacing:.05em">%s'
+            '<span style="font-weight:400;opacity:.75"> &nbsp;%s</span></div>'
+            '<div style="font-size:11px;margin-top:2px;color:%s">%s</div></td>'
+            '<td width="6"></td>' % (style, name, band, subcol, sub if on else "&nbsp;")
+            for style, name, band, sub, subcol, on in cells)
+        return ('<div style="font-size:12.5px;color:#5a6270;margin-bottom:6px">'
+                'VIX <b style="color:#111;font-size:15px">%.2f</b></div>'
+                '<table width="100%%" cellpadding="0" cellspacing="0"><tr>%s</tr></table>'
+                % (lvl, tds))
+
+    segs = "".join(
+        '<div style="flex:1 1 0;%s;border-radius:7px;padding:7px 10px">'
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.05em">%s'
+        '<span style="font-weight:400;opacity:.7"> &nbsp;%s</span></div>'
+        '<div style="font-size:11px;margin-top:2px;color:%s">%s</div></div>'
+        % (style, name, band, subcol, sub if on else "&nbsp;")
+        for style, name, band, sub, subcol, on in cells)
+    return ('<div style="color:var(--dim);font-size:12.5px;margin-bottom:7px">'
+            'VIX <b style="color:var(--fg);font-size:15px">%.2f</b></div>'
+            '<div style="display:flex;gap:7px;margin-bottom:11px">%s</div>' % (lvl, segs))
+
+
 def _vol_regime(idx):
     """One-line read of the volatility complex.
 
@@ -84,19 +145,6 @@ def _vol_regime(idx):
     if idx.empty:
         return "", "#8b94a5"
 
-    # The bucket leads, because it governs. Our own read of the VIX is directional
-    # -- is volatility rising or falling -- and Hedgeye's is positional: what regime
-    # the level itself puts you in. They can disagree, and when they do the level is
-    # the one that decides whether a signal is actionable at all.
-    lead, lead_col = "", ""
-    vix = idx[idx["ticker"] == "VIX"]
-    if len(vix):
-        lvl = float(vix.iloc[0]["spot"])
-        name, note, stance = S.vix_bucket(lvl)
-        if name:
-            lead_col = STANCE_COL.get(stance, "#8b94a5")
-            lead = ("VIX %.2f &mdash; <b>%s</b> bucket &middot; %s. "
-                    % (lvl, name, note))
     bear = int(((idx["trade_bull"] == False) & (idx["trend_bull"] == False)).sum())
     bull = int(((idx["trade_bull"] == True) | (idx["trend_bull"] == True)).sum())
     n = len(idx)
@@ -109,7 +157,7 @@ def _vol_regime(idx):
     else:
         tail, col = ("Volatility is mixed across the complex &mdash; no clear "
                      "tailwind either way."), "#d9a441"
-    return lead + tail, (lead_col or col)
+    return tail, col
 
 
 def _index_rows(idx):
@@ -404,6 +452,7 @@ def render_dashboard(df, params, generated=None, book=None):
         vol_html = (
             '<h2 style="font-size:15px;margin:6px 0 9px;letter-spacing:-.01em">'
             'Market volatility</h2>'
+            + _vix_meter(idx) +
             '<div style="color:%s;font-size:12.5px;margin-bottom:10px">%s</div>'
             '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px">%s</div>'
             % (ncol, note, cells))
@@ -741,6 +790,7 @@ def render_newsletter(df, params, generated=None, book=None):
             '<span style="display:inline-block;background:#334155;color:#fff;font-size:12px;'
             'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
             'MARKET VOLATILITY</span>'
+            '<div style="margin-top:9px">' + _vix_meter(idx, email=True) + '</div>'
             '<div style="color:%s;font-size:12.5px;margin-top:7px">%s</div></td></tr>'
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
             % (ncol, note, items))
