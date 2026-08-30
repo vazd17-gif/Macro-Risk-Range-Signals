@@ -168,15 +168,6 @@ def _side(bull):
     return "" if bull is None else ("bullish" if bull else "bearish")
 
 
-def _direction(cross):
-    """Whether a crossing was a break down, a break up, or one of each."""
-    lost = "lost" in cross
-    gained = "reclaimed" in cross
-    if lost and gained:
-        return "mixed"
-    return "bearish" if lost else "bullish" if gained else ""
-
-
 def _detail(r):
     """The lines that make a notification worth reading without opening anything.
 
@@ -235,15 +226,11 @@ def events(df):
         cross = getattr(r, "intraday", "")
         cross = "" if (cross is None or cross != cross) else str(cross).strip()
         if cross:
-            # "lost" and "reclaimed" say what happened but not what it means. The
-            # direction is the whole point of the alert, so it goes in the title
-            # where iOS shows it even when the banner is collapsed to one line.
-            way = _direction(cross)
             out.append(Event(
                 key="%s|%s" % (tk, cross),
-                title="%s %s%s" % (tk, cross, " - " + way if way else ""),
+                title="%s %s" % (tk, cross),
                 body=nl.join(_detail(r)),
-                short="%s %s at %s%s" % (tk, cross, spot, " (%s)" % way if way else ""),
+                short="%s %s at %s" % (tk, cross, spot),
                 urgent=True,
                 tag=TAGS.get(cross.split(" ")[0], "")))
             continue
@@ -391,12 +378,12 @@ def _samples():
         ("TEST ADD LONG", body("bullish", "bullish",
                                "low end of RANGE, bullish TRADE and TREND"),
          False, TAGS[ADD_LONG]),
-        ("TEST lost TREND - bearish", body("bullish", "bearish"),
+        ("TEST lost TREND", body("bullish", "bearish"),
          True, TAGS["lost"]),
         ("TEST ADD SHORT", body("bearish", "bearish",
                                 "high end of RANGE, bearish TRADE and TREND"),
          False, TAGS[ADD_SHORT]),
-        ("TEST reclaimed TRADE - bullish", body("bullish", "bearish"),
+        ("TEST reclaimed TRADE", body("bullish", "bearish"),
          True, TAGS["reclaimed"]),
     ]
 
