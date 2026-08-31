@@ -475,12 +475,15 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return ADD_LONG, "low end of RANGE, bullish TRADE and TREND"
     if buy_low and trend_bull:
         return WATCHLIST, "at the low end but TRADE has broken - watch for TREND to hold"
-    # A short needs a bearish TREND, not merely a bearish TRADE. A bullish-TREND
-    # name at the top of its range is a position to take something off, not one to
-    # short, and it falls through to the trim below.
+    # Opening a short needs both durations bearish, exactly as opening a long needs
+    # both bullish. One of each is not a position, it is a disagreement: a bearish
+    # TREND whose TRADE has been reclaimed is watched for TREND to give way, the
+    # mirror of a bullish TREND whose TRADE has broken.
+    if sell_high and trend_bull is False and trade_bull is False:
+        return ADD_SHORT, "high end of RANGE, bearish TRADE and TREND"
     if sell_high and trend_bull is False:
-        both = "TRADE and TREND" if trade_bull is False else "TREND"
-        return ADD_SHORT, "high end of RANGE, bearish %s" % both
+        return WATCHLIST, ("at the high end but TRADE has been reclaimed - "
+                           "watch for TREND to give way")
     if sell_high and trend_bull:
         return TRIM_LONG, "high end of RANGE in a bullish TREND - take some off"
     if buy_low and trend_bull is False:
