@@ -70,45 +70,6 @@ def path(custom=None):
     return custom or repo_path("data", "portfolio.csv")
 
 
-TRIM_COLUMNS = ["ticker", "side", "date", "action", "entry_price", "price", "pnl_pct"]
-
-
-def trim_path(custom=None):
-    """Where trim events live -- beside the book, never inside it.
-
-    A trim does not change what is held, so it does not belong in the position
-    file: putting it there would either duplicate the lot or overwrite the entry
-    that all P&L is measured from. It is an event log, and it is what lets the
-    report say what a reduction was worth at the moment it was called.
-    """
-    return (custom.replace(".csv", "_trims.csv") if custom
-            else repo_path("data", "portfolio_trims.csv"))
-
-
-def load_trims(custom=None):
-    p = trim_path(custom)
-    if not os.path.exists(p):
-        return pd.DataFrame(columns=TRIM_COLUMNS)
-    return pd.read_csv(p)
-
-
-def record_trim(ticker, side, date, action, entry_price, price, custom=None):
-    """Log a reduction and what it was worth. Returns the row, or None if already
-    logged -- the live job runs every ten minutes and must not stack duplicates."""
-    df = load_trims(custom)
-    key = (str(ticker), str(date), str(action))
-    if len(df) and any((str(t), str(d), str(a)) == key
-                       for t, d, a in zip(df["ticker"], df["date"], df["action"])):
-        return None
-    sign = 1.0 if side == LONG else -1.0
-    pnl = 100.0 * sign * (float(price) / float(entry_price) - 1.0)
-    row = {"ticker": ticker, "side": side, "date": str(date), "action": action,
-           "entry_price": float(entry_price), "price": float(price), "pnl_pct": pnl}
-    out = pd.concat([df, pd.DataFrame([row], columns=TRIM_COLUMNS)], ignore_index=True)
-    out.to_csv(trim_path(custom), index=False)
-    return row
-
-
 def load(custom=None) -> pd.DataFrame:
     p = path(custom)
     if not os.path.exists(p):
@@ -253,18 +214,22 @@ def _action(side, sig, at_low, at_high, event):
 AUTO_OPEN = {S.ADD_LONG: LONG, S.BREAKOUT: LONG,
              S.ADD_SHORT: SHORT, S.BREAKDOWN: SHORT}
 
-# ...and the orders that flatten one.
-AUTO_CLOSE = {S.REMOVE_LONG: LONG, S.COVER_SHORT: SHORT}
+# ...and the orders that take one off. The trims are here because the book holds no
+# size: "sell some" has nothing to sell some of, so the lot comes off and the P&L is
+# realised. The signal still reads SELL SOME, which is the instruction; this is only
+# what an unsized book can do about it, and it is why every reduction shows up as a
+# closed position with a number attached rather than vanishing quietly.
+AUTO_CLOSE = {S.REMOVE_LONG: LONG, S.COVER_SHORT: SHORT,
+              S.TRIM_LONG: LONG, S.TRIM_SHORT: SHORT}
 
 # Reductions. These never close the lot -- the book has no position sizing, so
 # there is no size to take off -- but they are still decisions with a price and a
 # P&L at the moment they were called, and that is worth recording. The position
 # carries on being measured from its original entry.
-AUTO_TRIM = {S.TRIM_LONG: LONG, S.TRIM_SHORT: SHORT}
 
 
 def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
-    """Bring the book in line with today's signals. Returns (opened, closed, trimmed).
+    """Bring the book in line with today's signals. Returns (opened, closed).
 
     Closes run before opens so a name that has flipped can come off one side and go
     on the other in the same pass.
@@ -292,7 +257,7 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
     held = open_positions(custom)
     have = dict(zip(held["ticker"], held["side"])) if not held.empty else {}
     entry = dict(zip(held["ticker"], held["entry_price"])) if not held.empty else {}
-    opened, closed, trimmed = [], [], []
+    opened, closed = [], []
 
     def _close(tk, price, why):
         side, ent = have.get(tk), entry.get(tk)
@@ -307,19 +272,6 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
     for r in sig_df.itertuples():
         sig = getattr(r, "signal", None)
         tk, price = r.ticker, float(r.spot)
-        # A reduction is logged, not executed: the lot stays open and keeps being
-        # measured from its original entry. What gets recorded is what the cut was
-        # worth when it was called.
-        side_trim = AUTO_TRIM.get(sig)
-        if side_trim and have.get(tk) == side_trim:
-            when = next_session(getattr(r, "asof", "")) if only_intraday else getattr(r, "asof", "")
-            row = record_trim(tk, side_trim, when, sig, entry[tk], price, custom=custom)
-            if row:
-                trimmed.append(row)
-                if verbose:
-                    print("  trimmed %s at %.2f (%s) - %+.2f%% since entry"
-                          % (tk, price, sig, row["pnl_pct"]))
-
         side_out = AUTO_CLOSE.get(sig)
         if side_out and have.get(tk) == side_out:
             _close(tk, price, sig)
@@ -341,9 +293,30 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
         if verbose:
             print("  opened %s %s at %.2f (%s)" % (side_in, tk, row["entry_price"], sig))
 
-    if verbose and not (opened or closed or trimmed):
+    if verbose and not (opened or closed):
         print("  book already matches the signals")
-    return opened, closed, trimmed
+    return opened, closed
+
+
+def closed_on(session, custom=None):
+    """Lots that came off on `session`, with what they made.
+
+    A position leaving the book is the only moment its P&L becomes real, so it has
+    to be reported rather than simply disappearing from the open list. Both surfaces
+    show this; without it a reduction would look like the name had never been held.
+    """
+    df = load(custom)
+    if df.empty:
+        return pd.DataFrame(columns=["ticker", "side", "entry_date", "entry_price",
+                                     "exit_date", "exit_price", "pnl_pct", "notes"])
+    out = df[(df["status"] == CLOSED) & (df["exit_date"].astype(str) == str(session))].copy()
+    if out.empty:
+        return out.assign(pnl_pct=[])
+    sign = np.where(out["side"] == LONG, 1.0, -1.0)
+    out["pnl_pct"] = 100.0 * sign * (
+        out["exit_price"].astype(float) / out["entry_price"].astype(float) - 1.0)
+    return out[["ticker", "side", "entry_date", "entry_price",
+                "exit_date", "exit_price", "pnl_pct", "notes"]]
 
 
 def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
@@ -360,14 +333,6 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
 
     s = sig_df.set_index("ticker")
     asof = str(sig_df["asof"].max()) if "asof" in sig_df else ""
-    # Trims called for this report: the daily run dates them by the close, the
-    # intraday one by the session that close governs. Both count as "today".
-    session = str(next_session(asof) or "")
-    tr = load_trims(custom)
-    if len(tr):
-        tr = tr[tr["date"].astype(str).isin([asof, session])]
-    recent = {t: (a, p_, n) for t, a, p_, n in
-              zip(tr["ticker"], tr["action"], tr["price"], tr["pnl_pct"])} if len(tr) else {}
     quotes = (live_spot(sorted(set(pos["ticker"]) & set(s.index)), asof=asof)
               if live else {})
 
@@ -406,9 +371,6 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
             "trade": float(r["trade"]), "trend": float(r["trend"]),
             "trade_bull": r["trade_bull"], "trend_bull": r["trend_bull"],
             "signal": r["signal"], "action": act, "action_why": why, "notes": p.notes,
-            "trim_action": recent.get(p.ticker, (None, np.nan, np.nan))[0],
-            "trim_price": recent.get(p.ticker, (None, np.nan, np.nan))[1],
-            "trim_pnl_pct": recent.get(p.ticker, (None, np.nan, np.nan))[2],
         })
     out = pd.DataFrame(rows)
     order = {A_SELL: 0, A_COVER: 1, A_SHORT: 2, A_TRIM: 3, A_COVER_SOME: 4,

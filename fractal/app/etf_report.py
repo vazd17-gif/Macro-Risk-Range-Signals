@@ -44,20 +44,30 @@ SIG_STYLE = {
 BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
 
 
-def _trim_note(pos, dark=True):
-    """What a reduction called today was worth, or "" if none was.
+def _closed_block(closed, dark=True):
+    """Positions that came off this session, with what they made.
 
-    Shown against the position rather than replacing it: the lot stays open and
-    keeps being measured from its original entry, so this is a second number, not a
-    correction to the first.
+    A reduction is the moment P&L stops being paper, so it is reported rather than
+    the name simply dropping out of the open list. Without this a "sell some" would
+    look like the position had never been held.
     """
-    act = getattr(pos, "trim_action", None)
-    pnl = getattr(pos, "trim_pnl_pct", None)
-    if not act or pnl is None or pnl != pnl:
+    if closed is None or not len(closed):
         return ""
-    col = ("#0ea37f" if pnl >= 0 else "#ef5350") if dark else ("#0b8f6e" if pnl >= 0 else "#d33")
-    return ('<span style="color:%s;font-weight:650">%s today at %s &middot; %+.2f%%</span>'
-            % (col, html.escape(act), _f(getattr(pos, "trim_price", float("nan"))), pnl))
+    line, dim = ("var(--line)", "var(--dim)") if dark else ("#e6e8ec", "#8b94a5")
+    rows = []
+    for r in closed.itertuples():
+        col = ("#0ea37f" if r.pnl_pct >= 0 else "#ef5350") if dark else (
+              "#0b8f6e" if r.pnl_pct >= 0 else "#d33")
+        rows.append(
+            '<tr><td style="padding:7px 0;border-bottom:1px solid %s">'
+            '<span style="font-weight:700">%s</span>'
+            '<span style="color:%s;font-size:12px"> &nbsp;%s closed</span>'
+            '<span style="float:right;color:%s;font-weight:700">%+.2f%%</span>'
+            '<div style="color:%s;font-size:12.5px;margin-top:2px">'
+            '%s &rarr; %s</div></td></tr>'
+            % (line, r.ticker, dim, r.side, col, r.pnl_pct, dim,
+               _f(r.entry_price), _f(r.exit_price)))
+    return "".join(rows)
 
 
 # A volatility index is coloured by what it means for everything else, not by which
@@ -375,7 +385,7 @@ b.setAttribute('aria-pressed',on?'false':'true');apply();};});
 """
 
 
-def render_dashboard(df, params, generated=None, book=None):
+def render_dashboard(df, params, generated=None, book=None, closed=None):
     generated = generated or dt.datetime.now()
     asof = df["asof"].max() if len(df) else "-"
     counts = df["signal"].map(S.LABEL).value_counts().to_dict()
@@ -518,7 +528,6 @@ def render_dashboard(df, params, generated=None, book=None):
                 '<td data-v="%.4f" style="color:%s">%+.2f%%</td>'
                 '<td>%s</td>'
                 '<td class="l"><span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span></td>'
-                '<td class="l">%s</td>'
                 '<td class="l why">%s</td></tr>'
                 % (b.ticker, sidec, b.side, b.entry_date,
                    b.entry_price, _f(b.entry_price),
@@ -526,7 +535,7 @@ def render_dashboard(df, params, generated=None, book=None):
                    b.pnl_pct, pc, b.pnl_pct,
                    b.day_pct, tc, b.day_pct,
                    days,
-                   ac, ac, ac, html.escape(b.action), _trim_note(b),
+                   ac, ac, ac, html.escape(b.action),
                    html.escape(b.action_why or "")))
         pf_html = (
             '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Portfolio '
@@ -537,8 +546,17 @@ def render_dashboard(df, params, generated=None, book=None):
             % (len(book), book["pnl_pct"].mean(), book["day_pct"].mean(),
                "".join("<th>%s</th>" % h for h in
                        ["Position", "Side", "Added", "Entry",
-                        "Spot", "P&L", "Today", "Days", "Action", "Reduced", "Why"]),
+                        "Spot", "P&L", "Today", "Days", "Action", "Why"]),
                "".join(prow)))
+
+    if closed is not None and len(closed):
+        pf_html += (
+            '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Closed today '
+            '<span style="color:var(--dim);font-weight:400;font-size:13px">'
+            '&middot; %d &middot; realised %+.2f%%</span></h2>'
+            '<table style="margin-bottom:24px;width:100%%;max-width:640px">'
+            '<tbody>%s</tbody></table>'
+            % (len(closed), closed["pnl_pct"].mean(), _closed_block(closed, dark=True)))
 
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
              "% to low", "% to high", "TRADE", "TREND",
@@ -697,7 +715,7 @@ def _explainer():
         'HOW TO READ THIS</div>%s</div></td></tr>' % rows)
 
 
-def render_newsletter(df, params, generated=None, book=None):
+def render_newsletter(df, params, generated=None, book=None, closed=None):
     generated = generated or dt.datetime.now()
     asof = df["asof"].max() if len(df) else "-"
     b = S.buckets(df)
@@ -717,7 +735,7 @@ def render_newsletter(df, params, generated=None, book=None):
                 '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">'
                 'entry <b>%s</b> &rarr; spot <b>%s</b>'
                 '<span style="color:#8b94a5"> &middot; %s day%s held &middot; '
-                'today %+.2f%%</span>%s</div>'
+                'today %+.2f%%</span></div>'
                 '<div style="margin-top:4px"><span style="background:%s;color:#fff;font-size:11px;'
                 'font-weight:700;padding:2px 7px;border-radius:3px">%s</span>'
                 '<span style="color:#5a6270;font-size:12.5px"> &nbsp;%s</span></div></td></tr>'
@@ -729,8 +747,6 @@ def render_newsletter(df, params, generated=None, book=None):
                    ("%d" % pos.days_held) if np.isfinite(pos.days_held) else "&ndash;",
                    "" if pos.days_held == 1 else "s",
                    pos.day_pct,
-                   ('<div style="margin-top:3px">%s</div>' % _trim_note(pos, dark=False))
-                   if _trim_note(pos, dark=False) else "",
                    ac, html.escape(pos.action), html.escape(pos.action_why or "holding")))
         pf = ('<tr><td style="padding:20px 0 6px">'
               '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
@@ -740,20 +756,34 @@ def render_newsletter(df, params, generated=None, book=None):
               '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
               % (len(book), "".join(items)))
 
+    cl = ""
+    if closed is not None and len(closed):
+        realised = closed["pnl_pct"].mean()
+        cl = ('<tr><td style="padding:20px 0 6px">'
+              '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
+              'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
+              'CLOSED TODAY &nbsp;(%d &middot; %+.2f%% average)</span></td></tr>'
+              '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
+              % (len(closed), realised, _closed_block(closed, dark=False)))
+    pf = pf + cl
+
     blurbs = {
         "BUY": ("Buy. Price at or near the LOW end of the Risk Range with the signal "
                 "still bullish, or a volume breakout above the high end. Each line says "
                 "which."),
         "SELL SOME": ("Trim. TRADE has broken while TREND still holds, so the position "
-                      "comes down but does not come off - TREND is what decides whether "
-                      "you hold at all."),
+                      "comes down - TREND is what decides whether you hold at all. The "
+                      "book carries no size, so it books the reduction as the whole lot "
+                      "and reports what it made under CLOSED TODAY."),
         "SELL": ("Sell. TREND has broken, which is a regime change rather than a "
                  "wobble, so the long comes off entirely."),
         "SELL SHORT": ("Open a short, or avoid if long-only. Price at or near the HIGH "
                        "end of the Risk Range with a bearish signal, or a breakdown "
                        "through the LOW end on heavy volume. Each line says which."),
         "BUY SOME": ("Buy back part of the short. TRADE has been reclaimed while TREND "
-                     "is still bearish - reduce it, do not close it."),
+                     "is still bearish, so the short comes down but the bearish call "
+                     "stands. The book carries no size, so it buys the whole short back "
+                     "and reports what it made under CLOSED TODAY."),
         "COVER SHORT": ("TREND has been reclaimed. Close the short out."),
         "WATCHLIST": ("Nothing to act on yet. At an extreme of the Risk Range but the "
                       "signal has not confirmed, or a break that failed to hold."),
@@ -946,10 +976,18 @@ def main():
         elif df.attrs.get("live_at") is not None:
             P.sync(df, custom=args.portfolio, only_intraday=True)
     book = P.reconcile(df, custom=args.portfolio, live=args.live)
+    # A reduction is only real once the lot is off, so both surfaces report it. The
+    # exit is stamped with the close it was decided on, which for an intraday run is
+    # still the prior close -- hence both dates.
+    _a = str(df.attrs.get("asof", stamp))
+    _n = next_session(_a)
+    stamps = {_a} | ({_n.strftime("%Y-%m-%d")} if _n is not None else set())
+    closed = pd.concat([P.closed_on(d, custom=args.portfolio) for d in sorted(stamps)],
+                       ignore_index=True)
     with open(paths["dashboard"], "w", encoding="utf-8") as fh:
-        fh.write(render_dashboard(df, eff, book=book))
+        fh.write(render_dashboard(df, eff, book=book, closed=closed))
     with open(paths["newsletter"], "w", encoding="utf-8") as fh:
-        fh.write(render_newsletter(df, eff, book=book))
+        fh.write(render_newsletter(df, eff, book=book, closed=closed))
     df.to_csv(paths["csv"], index=False)
 
     if not book.empty:

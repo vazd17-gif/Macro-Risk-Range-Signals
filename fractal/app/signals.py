@@ -404,21 +404,17 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return COVER_SHORT, event + " - TREND reclaimed, close the short"
 
     # ---- 2. TRADE ----------------------------------------------------------
-    # A broken line is a full action, whichever line it is. TRADE breaking to the
-    # downside inside a bullish TREND takes the position off and waits for the model
-    # to say when to buy it back -- or to short it, if TREND goes too. The reclaim
-    # side mirrors that: TRADE taken back inside a bearish TREND closes the short.
-    #
-    # Partial actions belong to the range tier instead, which is the cleaner split:
-    # a line either holds or it does not, while where price sits inside the range is
-    # a matter of degree. Note this is stricter than Hedgeye's own wording, which
-    # sells *some* when TRADE breaks with TREND intact.
+    # TRADE breaking with TREND intact is a partial exit, which is Hedgeye's own
+    # wording: sell some, keep the trend position. The book has no position sizing,
+    # so it books the reduction as the lot coming off and realises the P&L -- the
+    # signal says "sell some" and the book records what that was worth. TREND going
+    # too is the full exit.
     if broke_trade and trend_bull:
-        return REMOVE_LONG, event + " to the downside - sell, wait for the model to buy back"
+        return TRIM_LONG, event + " with TREND still bullish - sell some, wait to buy back"
     if broke_trade:
         return REMOVE_LONG, event + " with TREND already bearish - exit"
     if recl_trade and trend_bull is False:
-        return COVER_SHORT, event + " to the upside - cover, wait for the model to re-short"
+        return TRIM_SHORT, event + " with TREND still bearish - buy some back, wait to re-short"
     # The re-entry, and it fires on the day of the reclaim only. Every other event
     # flag stays true for FRESH_DAYS so the report keeps showing it, which is right
     # for a sell -- closing an already-closed position is a no-op -- but wrong for a
