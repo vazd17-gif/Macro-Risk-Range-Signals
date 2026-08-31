@@ -374,23 +374,37 @@ def notify(df, asof="", verbose=True, dry=False, seed=False):
             print("alerts: nothing new (%d already pushed today)" % len(already))
         return 0
 
+    # A backend with nothing configured returns False rather than raising, so a run
+    # with no topic set looked exactly like a run that delivered: the digest printed
+    # either way and the count was never reported. Say what was actually accepted.
+    backends = configured()
+    if not dry and not backends and verbose:
+        print("  !! NOT PUSHED - no alert backend configured in this process. "
+              "Set FRACTAL_NTFY_TOPIC (see: python -m fractal.app.alerts --setup)")
+
+    accepted = 0
     if len(new) <= DIGEST_AT:
         for e in new:
             if not dry:
-                send(e.title, e.body, e.urgent, e.tag)
+                accepted += send(e.title, e.body, e.urgent, e.tag)
             if verbose:
                 print("  push: %s [%s]%s         %s"
                       % (e.title, e.tag, nl, e.body.replace(nl, nl + "         ")))
     else:
         body = nl.join(e.short for e in new)
         if not dry:
-            send("Risk Range: %d alerts" % len(new), body,
-                 any(e.urgent for e in new), TAGS["digest"])
+            accepted += send("Risk Range: %d alerts" % len(new), body,
+                             any(e.urgent for e in new), TAGS["digest"])
         if verbose:
             print("  push digest (%d):%s    %s"
                   % (len(new), nl, body.replace(nl, nl + "    ")))
+    if not dry and verbose:
+        print("  delivered to %d backend(s): %s"
+              % (accepted, ", ".join(backends) if backends else "none"))
 
-    if not dry:
+    # Only record events as pushed if something actually took them. Marking them
+    # sent after a silent failure loses them for the rest of the session.
+    if not dry and accepted:
         _save(asof, already | {e.key for e in new})
     return len(new)
 
