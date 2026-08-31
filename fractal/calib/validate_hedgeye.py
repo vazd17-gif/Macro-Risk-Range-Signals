@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.loader import load_params, load_prices, repo_path
-from ..model import adaptive_ma, range_ewma, state as state_mod
+from ..model import adaptive_ma, range_ewma
 
 
 def _prior_index(close, date):

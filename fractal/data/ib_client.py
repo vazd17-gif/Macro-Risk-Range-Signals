@@ -6,7 +6,6 @@ the gateway is down, `fetch` raises IBUnavailable and callers fall back to Yahoo
 """
 from __future__ import annotations
 
-import datetime as dt
 import pandas as pd
 
 from .universe import IB_CONIDS

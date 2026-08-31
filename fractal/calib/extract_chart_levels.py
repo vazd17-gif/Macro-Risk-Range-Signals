@@ -29,7 +29,6 @@ bar against a known quoted level (SLV 2026-08-28 range top = 64.30).
 from __future__ import annotations
 
 import argparse
-import os
 import numpy as np
 import pandas as pd
 from PIL import Image

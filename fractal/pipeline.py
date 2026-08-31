@@ -43,19 +43,3 @@ def run(tickers=None, params: dict | None = None, source: str | None = None,
     if len(out):
         out = out.sort_values(["group", "ticker"]).reset_index(drop=True)
     return out
-
-
-def series_for(ticker: str, params: dict | None = None, source: str | None = None) -> pd.DataFrame:
-    """Full per-bar history of levels for one ticker — used by calib and the chart view."""
-    params = params or load_params()
-    df = load_prices([ticker], params=params, source=source, verbose=False).get(ticker)
-    if df is None:
-        raise ValueError(f"no data for {ticker}")
-    close = df["Close"].dropna()
-    lines = adaptive_ma.compute(close, params)
-    rng = range_ewma.compute(close, params, volume=df.get("Volume"))
-    out = df.join(lines).join(rng[["sigma", "center", "range_low", "range_high"]])
-    st = state_mod.state_series(close, lines)
-    out = out.join(st)
-    out["phase"] = state_mod.fractal_phase(st)
-    return out

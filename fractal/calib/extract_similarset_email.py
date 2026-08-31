@@ -26,11 +26,10 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from ..data.loader import load_params, load_prices, repo_path
+from ..data.loader import load_params, load_prices
 from ..model import adaptive_ma, range_ewma
 from . import extract_chart_levels as X
 from . import extract_ranges as R
-from ..data.universe import yf_symbol
 
 # Similar Set names -> Yahoo symbols for the tickers seen across the daily emails.
 SS_YF = {

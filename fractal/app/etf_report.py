@@ -276,15 +276,6 @@ def _z_cell(z, thresh=2.0):
     return txt
 
 
-def _pct_cell(v, flag=""):
-    """Signed percentage, tinted when the session is a volume outlier."""
-    if v is None or not np.isfinite(v):
-        return "&ndash;"
-    col = VOL_COLOUR.get(flag)
-    txt = "%+.0f%%" % v
-    return ('<span style="color:%s;font-weight:650">%s</span>' % (col, txt)) if col else txt
-
-
 def _f(v, nd=2):
     if v is None or (isinstance(v, float) and not np.isfinite(v)):
         return "&ndash;"
@@ -920,7 +911,7 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 
 
 # --------------------------------------------------------------------- driver
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Build the Macro Risk Range dashboard and newsletter.")
     ap.add_argument("--tickers", default=None, help="override the watchlist")
     ap.add_argument("--profile", default="hedgeye_anchor",
@@ -936,7 +927,7 @@ def main():
                     help="open portfolio positions for today's range breaks")
     ap.add_argument("--push", action="store_true",
                     help="push new alerts to the phone (see fractal.app.alerts --setup)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     params = load_params()
     tickers = [t.strip().upper() for t in args.tickers.split(",")] if args.tickers else None
@@ -1005,7 +996,7 @@ def main():
     # results in a phone alert for a report that does not exist.
     if args.push:
         from . import alerts as A
-        A.notify(df, asof=str(df.attrs.get("asof", stamp)))
+        A.notify(df, asof=str(df.attrs.get("asof", stamp)), seed=not args.live)
     return 0
 
 

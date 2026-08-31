@@ -12,7 +12,6 @@ catches a mislabelled symbol before it poisons a fit.
 """
 from __future__ import annotations
 
-import os
 import numpy as np
 import pandas as pd
 

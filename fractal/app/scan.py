@@ -9,15 +9,14 @@ Screens implemented (build spec section 7):
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 
 import numpy as np
 import pandas as pd
 
-from ..data.loader import load_params, load_prices, repo_path
+from ..data.loader import load_params, load_prices
 from ..data.universe import all_tickers
 from ..pipeline import compute_one
-from ..model import adaptive_ma, range_ewma, state as state_mod
+from ..model import adaptive_ma, state as state_mod
 
 EDGE = 0.10          # "at the edge" = outer 10% of the range
 

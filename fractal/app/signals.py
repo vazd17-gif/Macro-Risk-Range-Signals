@@ -103,7 +103,6 @@ VOL_Z = 2.0          # |z| on log volume beyond which a session counts as an out
 # range rather than to a flat percentage is what makes one number work across the
 # list: it lands near 0.05% of spot on equity ETFs, where a move that small is
 # noise, and under it on fixed income, where the same move is real.
-CROSS_BUFFER = 0.02
 
 # Instruments whose whole Risk Range is narrower than MIN_RANGE_PCT do not move
 # enough for these rules to mean anything - a T-bill fund "breaking TRADE" by five
@@ -544,13 +543,6 @@ def vol_read(cross="", at_low=False, at_high=False):
     if at_low:
         return "at the low end - vol subdued", "supportive"
     return "", ""
-
-
-def line_band(range_low, range_high):
-    """Distance from a duration line inside which price counts as sitting on it."""
-    if not (np.isfinite(range_low) and np.isfinite(range_high)) or range_high <= range_low:
-        return 0.0
-    return CROSS_BUFFER * (range_high - range_low)
 
 
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,

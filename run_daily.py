@@ -41,34 +41,16 @@ def main():
     print("wrote %s\nwrote %s" % (html_path, csv_path))
 
     if not args.skip_etf:
-        from fractal.app import etf_report, signals as S
-        from fractal.app import portfolio as PF
-        etf = S.run(params=params, profile=args.profile)
-        if not etf.empty:
-            # Open any range breaks before reconciling, so the book the report
-            # renders already contains today's new positions.
-            PF.sync(etf)
-            book = PF.reconcile(etf)
-            eff = dict(params)
-            eff["range"] = dict(params["range"])
-            eff["range"]["active"] = args.profile
-            dash = os.path.join(args.outdir, "etf_dashboard.html")
-            news = os.path.join(args.outdir, "etf_newsletter.html")
-            with open(dash, "w", encoding="utf-8") as fh:
-                fh.write(etf_report.render_dashboard(etf, eff, book=book))
-            with open(news, "w", encoding="utf-8") as fh:
-                fh.write(etf_report.render_newsletter(etf, eff, book=book))
-            etf.to_csv(os.path.join(args.outdir, "etf_signals_%s.csv" % stamp), index=False)
-            if not book.empty:
-                print("book:  %d open | since entry %+.2f%% | today %+.2f%%"
-                      % (len(book), book["pnl_pct"].mean(), book["day_pct"].mean()))
-            c = etf["signal"].value_counts().to_dict()
-            print("macro: %d names | %s" % (len(etf), "  ".join(
-                "%s=%d" % (k, c.get(k, 0)) for k in
-                S.SIGNALS)))
-            print("wrote %s\nwrote %s" % (dash, news))
-            from fractal.app import alerts as A
-            A.notify(etf, asof=str(etf.attrs.get("asof", stamp)), seed=True)
+        # Delegate rather than reimplement. This block used to be its own copy of
+        # the ETF build and had quietly drifted from it -- it rendered without the
+        # closed-position report and printed raw signal names. One code path means
+        # the daily and intraday jobs can no longer disagree about what a build is.
+        from fractal.app import etf_report
+        rc = etf_report.main(["--sync", "--push",
+                              "--profile", args.profile, "--outdir", args.outdir])
+        if rc:
+            return rc
+
     return 0
 
 
