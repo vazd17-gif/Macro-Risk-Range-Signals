@@ -34,8 +34,8 @@ SIG_STYLE = {
     "SELL SOME":  ("#d9a441", "Sell some - TRADE has broken while TREND still holds; "
                               "trim, do not exit"),
     "SELL":       ("#ef5350", "Sell - TREND has broken; the long comes off"),
-    "SELL SHORT": ("#c0392b", "Sell short - at the high end of the RANGE with TRADE "
-                              "and TREND both bearish"),
+    "SELL SHORT": ("#c0392b", "Sell short - a bearish TREND rallying into the high "
+                              "end of the RANGE"),
     "BUY SOME":   ("#5c9ded", "Buy some - TRADE reclaimed while TREND is still bearish; "
                               "buy back part of the short"),
     "COVER SHORT":("#5c9ded", "Cover - TREND reclaimed; close the short out"),
@@ -767,8 +767,9 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                       "and reports what it made under CLOSED TODAY."),
         "SELL": ("Sell. TREND has broken, which is a regime change rather than a "
                  "wobble, so the long comes off entirely."),
-        "SELL SHORT": ("Open a short, or avoid if long-only. Price at or near the HIGH "
-                       "end of the Risk Range with TRADE and TREND both bearish."),
+        "SELL SHORT": ("Open a short, or avoid if long-only. A bearish TREND has rallied "
+                       "into the HIGH end of its Risk Range. TREND decides the side; "
+                       "TRADE only times it, so a reclaimed TRADE does not veto the short."),
         "BUY SOME": ("Buy back part of the short. TRADE has been reclaimed while TREND "
                      "is still bearish, so the short comes down but the bearish call "
                      "stands. The book carries no size, so it buys the whole short back "
