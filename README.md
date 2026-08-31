@@ -159,10 +159,8 @@ fractal/
              extract_chart_levels.py  axis calibration + line tracing
              extract_ranges.py    geometry, dating, verification
              backtest_coverage.py
-  app/       scan.py  dashboard.py
   config/    params.yaml      every fitted constant lives here
   reference/charts/           extracted chart images
-  out/       dashboard.html
 ```
 
 `config/params.yaml` holds all fitted constants; nothing numeric is hard-coded in
@@ -392,7 +390,7 @@ failure mode this harness exists to prevent — so it is left strict.
 
 ## Macro Risk Range Signals (dashboard + newsletter)
 
-`python run_daily.py` builds a report over a **188-name watchlist — 157 ETFs and
+`python -m fractal.app.etf_report` builds a report over a **188-name watchlist — 157 ETFs and
 the 31 highest dollar-volume S&P 500 single names** — applying Hedgeye's own ETF Pro
 decision rules. The model does not distinguish funds from stocks; the split exists
 only so the two lists can be maintained separately (`RAW` and `STOCKS` in
@@ -466,8 +464,8 @@ email — tables only, so it survives email clients), and a dated CSV.
 
 ```bash
 python -m fractal.app.etf_report                     # ETF report only
+python -m fractal.app.etf_report --sync --push        # what the daily job runs
 python -m fractal.app.etf_report --profile anchor_ewma --edge 0.20
-python run_daily.py --skip-etf                       # macro only
 ```
 
 ### Portfolio

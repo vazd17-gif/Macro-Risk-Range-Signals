@@ -105,21 +105,6 @@ def _parse(block):
     return [x.strip().upper() for x in block.replace("\n", " ").split(",")]
 
 
-def etf_tickers():
-    """Just the funds."""
-    return [t for t in dict.fromkeys(_parse(RAW)) if t and t not in UNRESOLVED]
-
-
-def stock_tickers():
-    """Just the single names."""
-    return [t for t in dict.fromkeys(_parse(STOCKS)) if t]
-
-
-def index_tickers():
-    """Just the volatility indices."""
-    return [t for t in dict.fromkeys(_parse(INDICES)) if t]
-
-
 def all_etfs(include_unresolved: bool = False):
     """Flat, de-duplicated watchlist in declaration order: funds, then single names."""
     seen, out = set(), []

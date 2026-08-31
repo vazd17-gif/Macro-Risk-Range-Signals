@@ -6,7 +6,7 @@ meta:
     range fitted by calib/fit_range.py against 720 range edges traced from 16 published
     charts (calib/extract_ranges.py)
 range:
-  active: anchor_ewma
+  active: hedgeye_anchor
   spot_ewma:
     lam: 0.88
     m: 1.648

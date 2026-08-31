@@ -14,7 +14,7 @@ set LOG=fractal\out\logs\daily_%TODAY%.log
 echo ================================================== >> "%LOG%" 2>&1
 echo Run started %TODAY% %TIME% >> "%LOG%" 2>&1
 
-python run_daily.py >> "%LOG%" 2>&1
+python -m fractal.app.etf_report --sync --push >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo REFRESH FAILED with exit code %errorlevel% >> "%LOG%" 2>&1
   endlocal

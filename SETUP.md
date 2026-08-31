@@ -87,7 +87,7 @@ Logs land in `fractal/out/logs/`.
 This is the part worth understanding, because it explains why the dashboard can be
 live without the levels ever moving mid-session.
 
-**Daily (12:00 London)** — `run_daily.py` refits everything from the last completed
+**Daily (12:00 London)** — `etf_report --sync --push` refits everything from the last completed
 session: RANGE, TRADE, TREND, and the volume baselines. At noon London the most
 recent close is yesterday's 16:00 ET, so the newsletter recaps it and carries the
 levels for the session opening at 14:30. Then it emails.
@@ -110,7 +110,7 @@ without being touched.
 ## Day-to-day
 
 ```bash
-python run_daily.py                          # full refresh (levels + newsletter files)
+python -m fractal.app.etf_report --sync      # full refresh (levels + newsletter files)
 python -m fractal.app.etf_report --live      # re-price now
 python -m fractal.app.publish --to you@x.com # draft a .eml to review
 python -m fractal.app.portfolio status       # book vs today's signals
