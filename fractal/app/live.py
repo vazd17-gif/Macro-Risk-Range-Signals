@@ -125,6 +125,7 @@ def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
     # volatility regime is a close-to-close judgement like TREND.
     edge_buy = df.attrs.get("edge_buy") or S.EDGE_BUY
     edge_sell = df.attrs.get("edge_sell") or S.EDGE_SELL
+    edge_break = df.attrs.get("edge_break") or S.EDGE_BREAK
 
     # A TRADE level touched earlier in this session is a trade already taken, and it
     # is not unwound if price crosses back before the close.
@@ -202,6 +203,7 @@ def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
         # The RANGE itself is still fixed by the close; what moves is where price
         # sits inside it. TREND stays a close-to-close judgement.
         buy_low, sell_low, buy_high, sell_high = S.range_flags(pos, edge_buy, edge_sell)
+        break_low, break_high = S.break_flags(pos, edge_break)
         at_low, at_high = buy_low, sell_high
 
         # Intraday, a "break" is a line crossed since the close rather than one
@@ -226,6 +228,7 @@ def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
             bt, bd, rt, rd,
             " and ".join(crossed) or (r.get("why") or ""),
             buy_low, sell_low, buy_high, sell_high, now_trade, now_trend,
+            break_low=break_low, break_high=break_high,
             outside_high=bool(np.isfinite(hi) and spot > hi),
             outside_low=bool(np.isfinite(lo) and spot < lo),
             # Volume is only known to the close, so intraday a break is confirmed

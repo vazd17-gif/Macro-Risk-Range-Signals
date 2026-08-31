@@ -57,6 +57,22 @@ EDGE_BY_VIX = ((19.0, 0.25, 0.05),    # calm: quick to buy, slow to sell
 
 EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 
+# The volume-confirmed break signals get their own band, and it does not move with
+# the VIX. The buy/sell bands answer "is this a good place to add to a position we
+# already believe in", which should widen and narrow with the regime. A breakout or
+# breakdown is a different claim -- that price has left the range on conviction --
+# and that claim is only credible at the extreme, whatever the VIX is doing.
+#
+# Keeping them coupled had a second problem: both low-end flags read the same
+# range, so narrowing m_dn to put the buy band where Hedgeye actually buys also
+# armed the breakdown short. One parameter was steering two unrelated decisions.
+EDGE_BREAK = 0.05
+
+
+def break_flags(pos, edge_break=EDGE_BREAK):
+    """(break_low, break_high) -- price at the extreme, for the volume rules."""
+    return pos <= edge_break, pos >= 1 - edge_break
+
 
 def edge_for_vix(level):
     """(buy band, sell band) for a VIX level, or None if the VIX is unreadable."""
@@ -142,7 +158,7 @@ def _days_since_flip(flags: pd.Series):
 
 
 def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
-             fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT):
+             edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT):
     """One name -> levels, range position, and any triggered signal.
 
     A volatility index gets levels and a direction but never a signal: you cannot
@@ -180,6 +196,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     recl_trend = bool(d_trend is not None and d_trend <= fresh_days and trend_bull is True)
 
     buy_low, sell_low, buy_high, sell_high = range_flags(pos, edge_buy, edge_sell)
+    break_low, break_high = break_flags(pos, edge_break)
     # The reported flags are the actionable ones: the zone you would buy in, and the
     # zone you would short in. They are what the alert strip renders.
     at_low, at_high = buy_low, sell_high
@@ -193,8 +210,9 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     # Whether the previous close was already at an edge, measured against that
     # session's own range rather than today's -- the envelope moves, so comparing
     # yesterday's close to today's low would report breaks that never happened.
-    # This uses the same `edge` band as the trigger, so "held" means still in the
-    # zone the break was called from.
+    # This uses the break band, not the buy/sell band, because the only thing
+    # was_above/was_below feed is the break tranche -- "held" has to mean still in
+    # the zone the break was called from, or the entry and its exit disagree.
     was_above = was_below = False
     if len(close) > 1:
         p_close = float(close.iloc[-2])
@@ -202,8 +220,8 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         p_hi = float(rng["range_high"].iloc[-2])
         if np.isfinite(p_lo) and np.isfinite(p_hi) and p_hi > p_lo:
             p_pos = (p_close - p_lo) / (p_hi - p_lo)
-            was_above = p_pos >= 1 - edge_buy      # yesterday's breakout zone
-            was_below = p_pos <= edge_sell        # yesterday's breakdown zone
+            was_above = p_pos >= 1 - edge_break    # yesterday's breakout zone
+            was_below = p_pos <= edge_break        # yesterday's breakdown zone
 
     # Volume against its 1-month and 3-month baselines. Volume is lognormal and its
     # scale differs by orders of magnitude across the list, so "unusual" is measured
@@ -292,6 +310,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     sig, why = decide(is_index(ticker), cash_like, width_pct,
                       broke_trend, broke_trade, recl_trend, recl_trade, event,
                       buy_low, sell_low, buy_high, sell_high, trade_bull, trend_bull,
+                      break_low=break_low, break_high=break_high,
                       outside_high=bool(spot > hi), outside_low=bool(spot < lo),
                       vol_surge=vol_surge, was_above=was_above, was_below=was_below,
                       trend_age=d_trend, trade_age=d_trade)
@@ -339,6 +358,8 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         "at_high": bool(at_high),
         "buy_low": bool(buy_low),
         "sell_low": bool(sell_low),
+        "break_low": bool(break_low),
+        "break_high": bool(break_high),
         "buy_high": bool(buy_high),
         "sell_high": bool(sell_high),
         "day_pct": day_pct,
@@ -367,6 +388,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
            recl_trend, recl_trade, event, buy_low, sell_low, buy_high, sell_high,
            trade_bull, trend_bull, outside_high=False, outside_low=False,
            vol_surge=False, was_above=False, was_below=False,
+           break_low=False, break_high=False,
            trend_age=None, trade_age=None):
     """(signal, why) from a name's current state. The only place the ladder lives.
 
@@ -441,10 +463,10 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # means anything -- on ordinary volume it is drift, and mean-reverts more often
     # than it continues. TREND still sets direction, so price pressing the high while
     # TREND is bearish is a squeeze and reads as a short.
-    if buy_high and vol_surge and trend_bull:
+    if break_high and vol_surge and trend_bull:
         held = " and has held" if was_above else " - watch whether it holds"
         return BREAKOUT, "at the RANGE high on heavy volume%s" % held
-    if sell_low and vol_surge and trend_bull is False:
+    if break_low and vol_surge and trend_bull is False:
         held = " and has held" if was_below else " - watch whether it holds"
         return BREAKDOWN, "at the RANGE low on heavy volume%s" % held
 
@@ -452,9 +474,9 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # is the breakout tranche, not the core position, which TREND still governs. The
     # direction test mirrors the trigger, or a bullish-TREND name gets told to cover
     # a breakdown add that could never have been taken.
-    if was_above and not buy_high and trend_bull:
+    if was_above and not break_high and trend_bull:
         return TRIM_LONG, "broke out but failed to hold the RANGE high - cut the breakout add"
-    if was_below and not sell_low and trend_bull is False:
+    if was_below and not break_low and trend_bull is False:
         return TRIM_SHORT, "broke down but failed to hold the RANGE low - cover the breakdown add"
 
     # A long is never opened against a bearish TREND. Price being cheap inside a
@@ -546,7 +568,8 @@ def vol_read(cross="", at_low=False, at_high=False):
 
 
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
-        fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT, verbose=True):
+        edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT,
+        verbose=True):
     """Evaluate the ETF watchlist. Returns a DataFrame, most actionable first.
 
     `edge` defaults to the VIX-scaled band: one band governs the whole list, because
@@ -587,7 +610,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
             missing.append(t)
             continue
         r = evaluate(t, df, params, edge_buy=edge_buy, edge_sell=edge_sell,
-                     fresh_days=fresh_days,
+                     edge_break=edge_break, fresh_days=fresh_days,
                      min_range_pct=min_range_pct)
         if r is None:
             missing.append(t)
@@ -615,6 +638,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     out.attrs["edge"] = edge_buy
     out.attrs["edge_buy"] = edge_buy
     out.attrs["edge_sell"] = edge_sell
+    out.attrs["edge_break"] = edge_break
     order = {REMOVE_LONG: 0, ADD_LONG: 1, ADD_SHORT: 2, WATCHLIST: 3, COVER_SHORT: 4}
     out["_rank"] = out["signal"].map(order).fillna(9)
     # inside each bucket, the most extreme range position first
