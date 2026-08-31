@@ -1,5 +1,4 @@
 ticker,side,entry_date,entry_price,shares,notes,status,exit_date,exit_price
-WEAT,long,2026-08-28,28.0,,auto: BREAKOUT,open,,
 AAAU,long,2026-08-28,43.93999862670898,,auto: ADD LONG,open,,
 GLD,long,2026-08-28,408.8900146484375,,auto: ADD LONG,open,,
 ENZL,long,2026-08-28,47.68000030517578,,auto: ADD LONG,open,,

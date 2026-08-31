@@ -26,16 +26,16 @@ from ..data.etf_names import short_names
 
 # ---------------------------------------------------------------- shared bits
 # Keyed by the heading shown rather than by the signal, because several signals
-# report under one order: price at the low end, a volume breakout and a short being
-# closed are all buys. The per-row `why` keeps the reason they differ.
+# report under one order: price at the low end and a short being closed are both
+# buys. The per-row `why` keeps the reason they differ.
 SIG_STYLE = {
-    "BUY":        ("#0ea37f", "Buy - at the low end of the RANGE, or a volume breakout "
-                              "above the high end"),
+    "BUY":        ("#0ea37f", "Buy - at the low end of the RANGE with TRADE and "
+                              "TREND still bullish"),
     "SELL SOME":  ("#d9a441", "Sell some - TRADE has broken while TREND still holds; "
                               "trim, do not exit"),
     "SELL":       ("#ef5350", "Sell - TREND has broken; the long comes off"),
-    "SELL SHORT": ("#c0392b", "Sell short - at the high end of the RANGE with a "
-                              "bearish signal, or a volume breakdown below the low end"),
+    "SELL SHORT": ("#c0392b", "Sell short - at the high end of the RANGE with TRADE "
+                              "and TREND both bearish"),
     "BUY SOME":   ("#5c9ded", "Buy some - TRADE reclaimed while TREND is still bearish; "
                               "buy back part of the short"),
     "COVER SHORT":("#5c9ded", "Cover - TREND reclaimed; close the short out"),
@@ -759,9 +759,8 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
     pf = pf + cl
 
     blurbs = {
-        "BUY": ("Buy. Price at or near the LOW end of the Risk Range with the signal "
-                "still bullish, or a volume breakout above the high end. Each line says "
-                "which."),
+        "BUY": ("Buy. Price at or near the LOW end of the Risk Range with TRADE and "
+                "TREND still bullish."),
         "SELL SOME": ("Trim. TRADE has broken while TREND still holds, so the position "
                       "comes down - TREND is what decides whether you hold at all. The "
                       "book carries no size, so it books the reduction as the whole lot "
@@ -769,8 +768,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
         "SELL": ("Sell. TREND has broken, which is a regime change rather than a "
                  "wobble, so the long comes off entirely."),
         "SELL SHORT": ("Open a short, or avoid if long-only. Price at or near the HIGH "
-                       "end of the Risk Range with a bearish signal, or a breakdown "
-                       "through the LOW end on heavy volume. Each line says which."),
+                       "end of the Risk Range with TRADE and TREND both bearish."),
         "BUY SOME": ("Buy back part of the short. TRADE has been reclaimed while TREND "
                      "is still bearish, so the short comes down but the bearish call "
                      "stands. The book carries no size, so it buys the whole short back "

@@ -68,6 +68,17 @@ EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 # armed the breakdown short. One parameter was steering two unrelated decisions.
 EDGE_BREAK = 0.05
 
+# The two volume-confirmed break rules are switched off. Over 42 sessions BREAKDOWN
+# fired 18 times for a median 5-day excess return of -3.26% against us: names at the
+# range low on heavy volume bounced rather than continued. That is 18 observations
+# and a t-stat of -1.27, so it is suggestive rather than proven -- which is why this
+# is a switch and not a deletion. BREAKOUT is off with it, having fired twice in the
+# same window, too rarely to judge either way.
+#
+# Set this back to True to re-enable both. Nothing else needs changing: the signals,
+# their labels and their report styling all stay in place.
+BREAKS_ENABLED = False
+
 
 def break_flags(pos, edge_break=EDGE_BREAK):
     """(break_low, break_high) -- price at the extreme, for the volume rules."""
@@ -463,10 +474,10 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # means anything -- on ordinary volume it is drift, and mean-reverts more often
     # than it continues. TREND still sets direction, so price pressing the high while
     # TREND is bearish is a squeeze and reads as a short.
-    if break_high and vol_surge and trend_bull:
+    if BREAKS_ENABLED and break_high and vol_surge and trend_bull:
         held = " and has held" if was_above else " - watch whether it holds"
         return BREAKOUT, "at the RANGE high on heavy volume%s" % held
-    if break_low and vol_surge and trend_bull is False:
+    if BREAKS_ENABLED and break_low and vol_surge and trend_bull is False:
         held = " and has held" if was_below else " - watch whether it holds"
         return BREAKDOWN, "at the RANGE low on heavy volume%s" % held
 
@@ -474,9 +485,9 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # is the breakout tranche, not the core position, which TREND still governs. The
     # direction test mirrors the trigger, or a bullish-TREND name gets told to cover
     # a breakdown add that could never have been taken.
-    if was_above and not break_high and trend_bull:
+    if BREAKS_ENABLED and was_above and not break_high and trend_bull:
         return TRIM_LONG, "broke out but failed to hold the RANGE high - cut the breakout add"
-    if was_below and not break_low and trend_bull is False:
+    if BREAKS_ENABLED and was_below and not break_low and trend_bull is False:
         return TRIM_SHORT, "broke down but failed to hold the RANGE low - cover the breakdown add"
 
     # A long is never opened against a bearish TREND. Price being cheap inside a
