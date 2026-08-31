@@ -24,14 +24,16 @@ range:
     lam: 0.94
     anchor_span: 5
     m_up: 2.3
-    m_dn: 2.68
+    m_dn: 1.74
     floor: 0.0
     winsor_z: null
     fit_rmse_pct: 0.924
-    note: fitted to 74 Hedgeye ranges across 2 dates (etf rows). ETF and macro are
-      separate populations - ETFs want a wider, downside-skewed band (~2.3/2.7) and
-      macro a narrower symmetric one (~1.7/1.7) - so this profile is fitted to the
-      population the report actually covers.
+    note: >-
+      m_up is fitted to Hedgeye's published ETF highs (74 ranges, 2 dates). m_dn is
+      deliberately NOT fitted to their published low. They add mid-range, so that low
+      is not a level they act on, and fitting to it pushed our own low so far away it
+      never triggered. 1.74 is the pre-refit value, which puts our buy band where
+      their adds actually happen.
   hedgeye_vol:
     lam: 0.94
     anchor_span: 5
