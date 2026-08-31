@@ -71,41 +71,6 @@ EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 # Keeping them coupled had a second problem: both low-end flags read the same
 # range, so narrowing m_dn to put the buy band where Hedgeye actually buys also
 # armed the breakdown short. One parameter was steering two unrelated decisions.
-# The range multipliers are skewed by the volatility regime, on the same logic as
-# EDGE_BY_VIX: which side of the range is easy to reach should depend on which way
-# risk is running. Calm gives the upside more room and keeps the floor close, so
-# price reaches the low often and the high rarely -- a market you buy dips in.
-# Stress inverts it: the ceiling comes closer and the floor moves away, so the model
-# can actually reach a short.
-#
-# This replaces a fixed 2.3/1.74, which made the top of the range unreachable in
-# every regime -- the model opened zero shorts in three months of backtest because
-# pos >= 0.95 never happened. The skew is what makes the model two-sided.
-MULT_BY_VIX = ((19.0, 2.25, 1.75),    # calm: room above, floor close
-               (29.0, 2.00, 2.00),    # chop: symmetric
-               (None, 1.75, 2.25))    # stress: ceiling close, room below
-
-
-def mult_for_vix(level):
-    """(m_up, m_dn) for a VIX level, or None if the VIX is unreadable."""
-    if level is None or level != level:
-        return None
-    for ceiling, up, dn in MULT_BY_VIX:
-        if ceiling is None or level < ceiling:
-            return up, dn
-    return None
-
-
-def with_mult(params, profile, mult):
-    """Copy of `params` with the profile's multipliers replaced. Never mutates."""
-    if not mult:
-        return params
-    out = dict(params); out["range"] = dict(out["range"])
-    cfg = dict(out["range"][profile]); cfg["m_up"], cfg["m_dn"] = float(mult[0]), float(mult[1])
-    out["range"][profile] = cfg
-    return out
-
-
 EDGE_BREAK = 0.05
 
 # The two volume-confirmed break rules are switched off. Over 42 sessions BREAKDOWN
@@ -646,7 +611,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     #
     # Everything newer than the agreed session is trimmed back to it, so a partial
     # print never reaches the model -- which matters most for the VIX itself, since
-    # the edge band and the range skew are both read off it.
+    # the edge band is read off it.
     last = [d.index[-1] for d in prices.values() if d is not None and len(d)]
     if last:
         session = pd.Series(last).mode()
@@ -659,27 +624,16 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     # the VIX is missing from this run -- a scan of three ETFs should not silently
     # change its own definition of "at the end" because it happened to omit it.
     scaled = None
-    vix_level = None
-    vix = prices.get(yf_symbol("VIX"))
-    if vix is not None and "Close" in vix and len(vix["Close"].dropna()):
-        vix_level = float(vix["Close"].dropna().iloc[-1])
     if edge is None:
-        if vix_level is not None:
-            scaled = edge_for_vix(vix_level)
+        vix = prices.get(yf_symbol("VIX"))
+        if vix is not None and "Close" in vix and len(vix["Close"].dropna()):
+            scaled = edge_for_vix(float(vix["Close"].dropna().iloc[-1]))
         edge = scaled if scaled is not None else (EDGE_BUY, EDGE_SELL)
         if verbose:
             print("range edge: buy %.0f%% / sell %.0f%%%s"
                   % (100 * edge[0], 100 * edge[1],
                      "" if scaled is not None else "  (VIX unavailable)"))
 
-    # The range multipliers follow the same regime. Applied to `params` once, before
-    # any name is evaluated, so every name in a run shares one definition of the
-    # range -- the volatility regime is a property of the market, not of a ticker.
-    mult = mult_for_vix(vix_level)
-    if mult:
-        params = with_mult(params, params["range"]["active"], mult)
-        if verbose:
-            print("range skew: m_up %.2f / m_dn %.2f  (VIX %.2f)" % (mult[0], mult[1], vix_level))
     elif not isinstance(edge, (tuple, list)):
         edge = (float(edge), float(edge))     # a single number pins both sides
     edge_buy, edge_sell = edge
@@ -720,7 +674,6 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     out.attrs["edge_buy"] = edge_buy
     out.attrs["edge_sell"] = edge_sell
     out.attrs["edge_break"] = edge_break
-    out.attrs["m_up"], out.attrs["m_dn"] = (mult if mult else (None, None))
     order = {REMOVE_LONG: 0, ADD_LONG: 1, ADD_SHORT: 2, WATCHLIST: 3, COVER_SHORT: 4}
     out["_rank"] = out["signal"].map(order).fillna(9)
     # inside each bucket, the most extreme range position first

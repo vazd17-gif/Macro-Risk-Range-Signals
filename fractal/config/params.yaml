@@ -23,17 +23,16 @@ range:
   hedgeye_anchor:
     lam: 0.94
     anchor_span: 5
-    m_up: 2.3
-    m_dn: 1.74
+    m_up: 2.25
+    m_dn: 1.75
     floor: 0.0
     winsor_z: null
     fit_rmse_pct: 0.924
     note: >-
-      m_up is fitted to Hedgeye's published ETF highs (74 ranges, 2 dates). m_dn is
-      deliberately NOT fitted to their published low. They add mid-range, so that low
-      is not a level they act on, and fitting to it pushed our own low so far away it
-      never triggered. 1.74 is the pre-refit value, which puts our buy band where
-      their adds actually happen.
+      One pair across every volatility regime. m_up is anchored on Hedgeye's
+      published ETF highs; m_dn is deliberately NOT their published low, because
+      they add mid-range and that low is not a level they act on -- fitting to it
+      pushed our own low so far away the buy band never triggered.
   hedgeye_vol:
     lam: 0.94
     anchor_span: 5
