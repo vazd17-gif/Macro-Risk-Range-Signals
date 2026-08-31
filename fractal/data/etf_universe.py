@@ -37,7 +37,7 @@ XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
-AMAT, SNDK, SBSW
+AMAT, SNDK, SBSW, SNOW
 """
 
 
@@ -61,6 +61,10 @@ def is_index(ticker):
 
 
 # Grouping for the dashboard and newsletter. Anything unlisted falls to "other".
+def _parse(block):
+    return [x.strip().upper() for x in block.replace("\n", " ").split(",")]
+
+
 GROUPS = {
     "us_equity":    ["SPY", "QQQ", "RSP", "IWM", "IWC", "IWO", "MAGS", "SPLV", "SPMO",
                      "XLG", "GRNY"],
@@ -83,10 +87,11 @@ GROUPS = {
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
     "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT"],
     "volatility":   ["VIX", "VXN", "MOVE"],
-    "stock":        ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "AVGO", "META",
-                     "TSLA", "BRK-B", "MU", "LLY", "JPM", "WMT", "AMD", "V", "JNJ",
-                     "XOM", "MA", "INTC", "ABBV", "PLTR", "BAC", "ORCL", "CSCO",
-                     "COST", "CVX", "KO", "LRCX", "CAT", "AMAT", "SNDK", "SBSW"],
+    # Derived from the STOCKS block above rather than restated. It was a second copy
+    # of the same list, so every single name added to the watchlist landed in "other"
+    # until someone remembered to add it here too -- which is a grouping bug that
+    # shows up in the report's counts and filter chips, not an error anyone sees.
+    "stock":        _parse(STOCKS),
 }
 
 
@@ -100,10 +105,6 @@ GROUPS = {
 #   EPG   unrecognised symbol - removed
 #   PP    unrecognised symbol - removed
 UNRESOLVED = {}
-
-def _parse(block):
-    return [x.strip().upper() for x in block.replace("\n", " ").split(",")]
-
 
 def all_etfs(include_unresolved: bool = False):
     """Flat, de-duplicated watchlist in declaration order: funds, then single names."""
