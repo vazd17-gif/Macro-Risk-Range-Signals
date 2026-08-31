@@ -44,6 +44,22 @@ SIG_STYLE = {
 BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
 
 
+def _new_badge(r):
+    """A mark on instructions that changed since the last session.
+
+    Everything in the list is still true; this says which of it is news. A name
+    holding the same instruction for a week is one call, not five, and without the
+    mark a reader has to remember yesterday's list to know which is which.
+    """
+    if not getattr(r, "signal", None):
+        return ""                      # nothing was instructed, so nothing is new
+    if not getattr(r, "is_new", True):
+        return ('<span style="color:#8b94a5;font-weight:400;font-size:10.5px;'
+                'letter-spacing:.04em"> STANDING</span>')
+    return ('<span style="color:#0b8f6e;font-weight:700;font-size:10.5px;'
+            'letter-spacing:.04em"> NEW</span>')
+
+
 def _closed_block(closed, dark=True):
     """Positions that came off this session, with what they made.
 
@@ -858,7 +874,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
             app.append(
                 '<tr>'
                 '<td style="padding:3px 6px 3px 0;color:%s">'
-                '<span style="font-weight:700">%s</span>'
+                '<span style="font-weight:700">%s</span>%s'
                 '<span style="color:#9aa1ad;font-weight:400;font-size:11px"> %s</span></td>'
                 '<td align="right" style="padding:3px 6px">%s</td>'
                 '<td align="right" style="padding:3px 6px;color:#5a6270">%s</td>'
@@ -867,7 +883,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                 '<td align="right" style="padding:3px 0 3px 6px;color:%s">%s</td>'
                 '<td align="right" style="padding:3px 0 3px 10px">%s</td>'
                 '<td align="right" style="padding:3px 0 3px 6px">%s</td>'
-                '</tr>' % (nc, r.ticker, html.escape(names.get(r.ticker, "")),
+                '</tr>' % (nc, r.ticker, _new_badge(r), html.escape(names.get(r.ticker, "")),
                            _f(r.spot), _f(r.range_low), _f(r.range_high),
                            tc, _f(r.trade), nc, _f(r.trend),
                            _z_cell(r.vol_z_1m), _z_cell(r.vol_z_3m)))
@@ -946,6 +962,11 @@ def main(argv=None):
             print("[live] re-priced %d of %d names at %s"
                   % (df.attrs.get("n_live", 0), len(df), at.strftime("%H:%M")))
 
+    # What changed since the session we last published. The dashboard still shows
+    # every name -- that is the pull surface -- but the newsletter and the phone
+    # only carry what is new, which is Hedgeye's own "signal, not noise" rule.
+    df = S.mark_new(df)
+
     eff = dict(params)
     eff["range"] = dict(params["range"])
     eff["range"]["active"] = args.profile
@@ -988,6 +1009,15 @@ def main(argv=None):
     print("%s | %s" % (_universe_label(df), "  ".join(
         "%s=%d" % (k, counts.get(k, 0))
         for k in SIGNAL_ORDER)))
+    n_new = int(df["is_new"].sum()) if "is_new" in df else 0
+    n_std = int((df["signal"].notna() & ~df["is_new"]).sum()) if "is_new" in df else 0
+    print("changes: %d new, %d already standing" % (n_new, n_std))
+    # Only a completed daily build advances the record of what the reader has been
+    # told. A live re-price during the session must not, or the first intraday run
+    # would mark the whole day's set as seen and the rest would look like silence.
+    if not args.live:
+        S.save_state(str(df.attrs.get("asof", stamp)), df)
+
     for k, v in paths.items():
         print("wrote %s" % v)
 

@@ -27,6 +27,10 @@ profile draws a narrower band and would trip the edge rules more often.
 """
 from __future__ import annotations
 
+import io
+import json
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -581,6 +585,73 @@ def vol_read(cross="", at_low=False, at_high=False):
     if at_low:
         return "at the low end - vol subdued", "supportive"
     return "", ""
+
+
+# ---------------------------------------------------------------- what is new
+# Hedgeye's Capital Allocation desk states the discipline outright: "daily content
+# is available on the website to access at your convenience, and we only send
+# emails when the research demands immediate attention. When you receive an email
+# from us, it's signal, not noise."
+#
+# We were not doing that. Of 58 signals on 2026-08-31, 28 were the same instruction
+# the reader had already been given for the same name in the previous session. A
+# name sitting at the low end of its range for a week is one buy, not five, and
+# Similar Set says the same thing in plainer words: "Friday's fractal instructions
+# said trim. Today says hold."
+#
+# So the state is still computed for every name and still shown on the dashboard --
+# that is the pull surface. What gets pushed is the change.
+STATE_FILE = ("out", ".signal_state.json")
+
+
+def _state_path():
+    from ..data.loader import repo_path
+    return repo_path(*STATE_FILE)
+
+
+def load_state():
+    """{"asof": date, "signals": {ticker: signal}} from the last session published."""
+    p = _state_path()
+    if not os.path.exists(p):
+        return {"asof": "", "signals": {}}
+    try:
+        with io.open(p, encoding="utf-8") as fh:
+            st = json.load(fh)
+        return {"asof": str(st.get("asof", "")), "signals": dict(st.get("signals", {}))}
+    except Exception:
+        return {"asof": "", "signals": {}}
+
+
+def save_state(asof, df):
+    """Record what this session published, so the next one can tell what changed."""
+    sig = {str(r.ticker): (r.signal or "") for r in df.itertuples() if r.signal}
+    with io.open(_state_path(), "w", encoding="utf-8") as fh:
+        json.dump({"asof": str(asof), "signals": sig}, fh, indent=1, sort_keys=True)
+
+
+def mark_new(df, state=None):
+    """Stamp `is_new` and `since` against the previously published session.
+
+    `is_new` is False for a name repeating the instruction it already carried --
+    still true, still on the dashboard, but not news. `since` is the session the
+    current instruction first appeared, so a reader can see how long it has stood.
+    """
+    state = load_state() if state is None else state
+    prev = state.get("signals", {})
+    p_asof = state.get("asof", "")
+    asof = str(df["asof"].max()) if len(df) else ""
+    same_session = bool(p_asof) and p_asof == asof
+    out = df.copy()
+    out["is_new"] = [
+        bool(r.signal) and (prev.get(str(r.ticker), "") != (r.signal or ""))
+        for r in df.itertuples()]
+    # Re-running the same session must not turn everything stale: when the stored
+    # state IS this session, the comparison is against the session before it, which
+    # we no longer hold -- so keep what was already marked new.
+    if same_session:
+        out["is_new"] = [bool(r.signal) for r in df.itertuples()]
+    out["since"] = [(asof if n else p_asof or asof) for n in out["is_new"]]
+    return out
 
 
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,

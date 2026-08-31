@@ -368,7 +368,16 @@ def notify(df, asof="", verbose=True, dry=False, seed=False):
 
     asof = asof or str(df.attrs.get("asof", "")) or "?"
     already = _load(asof)
-    new = [e for e in events(df) if e.key not in already]
+    # A name repeating yesterday's instruction is not an alert. It is still on the
+    # dashboard and still in the scan; it just does not earn a buzz for a second
+    # day. Vol indices are exempt -- a regime read is context, not a position.
+    if "is_new" in getattr(df, "columns", []):
+        keep = set(df.loc[df["is_new"].fillna(True).astype(bool), "ticker"])
+        idx = set(df.loc[df.get("is_index", False) == True, "ticker"]) if "is_index" in df else set()
+        src = df[df["ticker"].isin(keep | idx)]
+    else:
+        src = df
+    new = [e for e in events(src) if e.key not in already]
     if not new:
         if verbose:
             print("alerts: nothing new (%d already pushed today)" % len(already))
