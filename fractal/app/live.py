@@ -129,7 +129,17 @@ def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
 
     # A TRADE level touched earlier in this session is a trade already taken, and it
     # is not unwound if price crosses back before the close.
-    session = str(next_session(asof) or "")
+    # Keyed by the calendar date the job RUNS, not by next_session(asof).
+    #
+    # next_session rolls forward the moment the day's bar lands in the feed, so the
+    # last hour of every session was writing its locks under TOMORROW's key -- and
+    # the next morning inherited them. Seven names carried Monday evening's
+    # crossings into Tuesday that way (BAC, COST, EWI, HYG, JNK, META, PSCC), two of
+    # which opened positions on a line that had been crossed the previous day.
+    #
+    # The lock exists to make a touch stick for the session it happened in. That
+    # session is a wall-clock day, so that is what it is keyed to.
+    session = dt.date.today().isoformat()
     locked = dict(load_locks(session)) if locks is None else dict(locks)
     fresh_lock = False
     out = df.copy()
