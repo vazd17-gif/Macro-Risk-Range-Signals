@@ -273,15 +273,18 @@ def _macro_block(df, dark=True):
             d, dc = "bullish", "#0ea37f"
         else:
             d, dc = "bearish", "#ef5350"
+        # The ticker itself carries the TREND colour, the same way it does on the
+        # scan and on the alert chips. One glance down the column reads the macro
+        # setup without anyone parsing a word at the end of each row.
         rows.append(
-            '<tr><td style="padding:6px 0;border-bottom:1px solid %s;color:%s">'
-            '<span style="font-weight:700">%s</span>'
+            '<tr><td style="padding:6px 0;border-bottom:1px solid %s">'
+            '<span style="font-weight:700;color:%s">%s</span>'
             '<span style="color:%s;font-size:12px"> &nbsp;%s</span></td>'
             '<td align="right" style="padding:6px 0;border-bottom:1px solid %s;'
             'font-variant-numeric:tabular-nums;color:%s">%s &ndash; %s</td>'
             '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
             'color:%s;font-weight:650;font-size:12.5px">%s</td></tr>'
-            % (line, ink, r.ticker, dim, html.escape(MACRO_NAMES.get(r.ticker, "")),
+            % (line, dc, r.ticker, dim, html.escape(MACRO_NAMES.get(r.ticker, "")),
                line, ink, _f(r.range_low), _f(r.range_high), line, dc, d))
     return "".join(rows)
 
