@@ -43,16 +43,7 @@ def load_prices(tickers, params: dict | None = None, source: str | None = None,
             if verbose:
                 print(f"[loader] IB unavailable ({e}); falling back to Yahoo.")
 
-    # A few instruments are not on the price feed at all -- European government
-    # yields among them. They come from the ECB Data Portal instead and are merged
-    # in, so callers never need to know which source a name came from.
-    from . import ecb_client
-    extra = [t for t in tickers if t in ecb_client.SERIES]
-    rest = [t for t in tickers if t not in ecb_client.SERIES]
-    out = yahoo_client.fetch(rest, years=years, cache_dir=cache_dir) if rest else {}
-    if extra:
-        out.update(ecb_client.fetch(extra, verbose=verbose))
-    return out
+    return yahoo_client.fetch(tickers, years=years, cache_dir=cache_dir)
 
 def next_session(asof):
     """The trading day that levels computed from the `asof` close apply to.
