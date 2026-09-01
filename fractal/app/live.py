@@ -229,6 +229,7 @@ def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
             " and ".join(crossed) or (r.get("why") or ""),
             buy_low, sell_low, buy_high, sell_high, now_trade, now_trend,
             break_low=break_low, break_high=break_high,
+            trend_neutral=bool(r.get("trend_neutral")),
             outside_high=bool(np.isfinite(hi) and spot > hi),
             outside_low=bool(np.isfinite(lo) and spot < lo),
             # Volume is only known to the close, so intraday a break is confirmed

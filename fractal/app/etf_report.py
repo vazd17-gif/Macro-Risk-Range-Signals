@@ -92,8 +92,17 @@ STANCE_COL = {"supportive": "#0ea37f", "risk_off": "#ef5350", "mixed": "#d9a441"
 
 
 def _trend_col(trend_bull):
-    """Ticker colour: green above TREND, red below, grey where TREND is unknown."""
-    return BULL if trend_bull else BEAR if trend_bull is False else FLAT
+    """Ticker colour: green above TREND, red below, grey neutral or unknown.
+
+    Tested identity-first rather than by truthiness. A NaN -- which is what a
+    neutral TREND becomes if the frame has been through a CSV -- is truthy, so the
+    obvious `BULL if trend_bull` would paint an undecided name bright green.
+    """
+    if trend_bull is True:
+        return BULL
+    if trend_bull is False:
+        return BEAR
+    return FLAT
 
 
 # Long side first, then short, trims beside the full action they reduce.
@@ -301,7 +310,8 @@ def _f(v, nd=2):
 def _bull_cell(level, bull):
     if level is None or not np.isfinite(level):
         return "&ndash;"
-    colour = "#0ea37f" if bull else ("#ef5350" if bull is False else "#8b94a5")
+    colour = ("#0ea37f" if bull is True else
+              "#ef5350" if bull is False else "#8b94a5")     # neutral / unknown
     return '<span style="color:%s">%s</span>' % (colour, _f(level))
 
 
@@ -434,6 +444,10 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     cards = [("Names", len(df), "var(--line)")]
     for name in SIGNAL_ORDER:
         cards.append((name, counts.get(name, 0), SIG_STYLE[name][0]))
+    # Neutral earns a card of its own: it is the reason a chunk of the list is
+    # silent, and without it the silence looks like nothing happening.
+    if "trend_neutral" in df and int(df["trend_neutral"].sum()):
+        cards.append(("NEUTRAL TREND", int(df["trend_neutral"].sum()), "#8b94a5"))
 
     # The alert strip carries the two things that are only true right now: a line
     # crossed during this session, and price sitting at an edge of today's range.
@@ -774,6 +788,16 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
               % (len(closed), realised, _closed_block(closed, dark=False)))
     pf = pf + cl
 
+    n_neutral = int(df["trend_neutral"].sum()) if "trend_neutral" in df else 0
+    neutral_note = ("" if not n_neutral else
+        '<tr><td style="padding:10px 0 0;color:#5a6270;font-size:12.5px;line-height:1.5">'
+        '<b>%d names are NEUTRAL TREND</b> and raise no signal. Price is within %.1f%% of '
+        'its own TREND line &mdash; close enough that a crossing is noise rather than a '
+        'change of regime. Hedgeye publish the same third state; measured against their '
+        'levels, their neutral calls sit a median 0.98%% from the line. Nothing is opened '
+        'or exited on a TREND event here until price picks a side.</td></tr>'
+        % (n_neutral, 100 * S.NEUTRAL_BAND))
+
     blurbs = {
         "BUY": ("Buy. Price at or near the LOW end of the Risk Range with TRADE and "
                 "TREND still bullish."),
@@ -870,7 +894,8 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                    % GROUP_LABEL.get(g, g))
         for r in grp.sort_values("ticker").itertuples():
             tc = "#0ea37f" if r.trade_bull else "#ef5350"
-            nc = "#0ea37f" if r.trend_bull else "#ef5350"
+            nc = ("#0ea37f" if r.trend_bull is True else
+                  "#ef5350" if r.trend_bull is False else "#8b94a5")
             app.append(
                 '<tr>'
                 '<td style="padding:3px 6px 3px 0;color:%s">'
@@ -895,6 +920,13 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
         '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s,
                           counts.get(s, 0))
         for s in SIGNAL_ORDER)
+    # Neutral is a state, not the absence of one, so it is counted where the reader
+    # can see it. These names raise no directional signal at all.
+    if n_neutral:
+        chips += ('<span style="display:inline-block;background:#8b94a522;color:#5a6270;'
+                  'border:1px solid #8b94a555;border-radius:999px;padding:3px 10px;'
+                  'font-size:12px;font-weight:600;margin:0 6px 6px 0">'
+                  'NEUTRAL TREND %d</span>' % n_neutral)
 
     return """<div style="background:#f4f5f7;padding:22px 0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
 <table width="100%%" cellpadding="0" cellspacing="0"><tr><td align="center">
@@ -921,7 +953,7 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 <tr><td><table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px">%s</table></td></tr>
 </table></td></tr></table></div>
 """ % (_session_label(asof), _universe_label(df), asof, chips,
-       _explainer(), pf, sections,
+       _explainer(), pf, neutral_note + sections,
        "".join(app))
 
 

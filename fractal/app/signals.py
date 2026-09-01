@@ -84,6 +84,24 @@ EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 # Keeping them coupled had a second problem: both low-end flags read the same
 # range, so narrowing m_dn to put the buy band where Hedgeye actually buys also
 # armed the breakdown short. One parameter was steering two unrelated decisions.
+# Hedgeye publishes a third TREND state we did not have. Their Early Look levels
+# carry "(bullish)", "(bearish)" AND "(neutral)" -- "Japanese Yen was -0.6% on the
+# week after moving back to Neutral TREND". Measured against our own line across
+# their 281 published rows, their neutral calls sit a median 0.98% from it, versus
+# 3.53% for bullish and 2.35% for bearish. Neutral means price is sitting ON the
+# line, not that they have no view.
+#
+# That is also where our churn lives: 116 names had flipped TREND within 20
+# sessions, and 40 of them were inside 1.5% of the line. A break of a level price
+# is already resting on is noise, and it was firing exits -- 18 REMOVE LONG, 7
+# TRIM LONG and 4 COVER SHORT on a single day came from inside this band.
+#
+# Inside the band the model takes no directional view: it will not open, and it
+# will not exit on a TREND event. Positions already held are left alone, because
+# the reason for holding them has not been contradicted -- only muddied.
+NEUTRAL_BAND = 0.015
+
+
 EDGE_BREAK = 0.05
 
 # The two volume-confirmed break rules are switched off. Over 42 sessions BREAKDOWN
@@ -215,6 +233,13 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     pos = (spot - lo) / (hi - lo)
     trade_bull = bool(spot > trade) if np.isfinite(trade) else None
     trend_bull = bool(spot > trend) if np.isfinite(trend) else None
+    # Sitting on the line is its own state. None here reads as "no conviction" all
+    # the way down the ladder: `trend_bull` is falsy so nothing opens long, and
+    # `trend_bull is False` is untrue so nothing opens short.
+    trend_neutral = bool(
+        np.isfinite(trend) and trend and abs(spot / trend - 1.0) <= NEUTRAL_BAND)
+    if trend_neutral:
+        trend_bull = None
 
     d_trade, prev_trade = _days_since_flip(states.get("trade_bull", pd.Series(dtype=object)))
     d_trend, prev_trend = _days_since_flip(states.get("trend_bull", pd.Series(dtype=object)))
@@ -340,6 +365,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
                       broke_trend, broke_trade, recl_trend, recl_trade, event,
                       buy_low, sell_low, buy_high, sell_high, trade_bull, trend_bull,
                       break_low=break_low, break_high=break_high,
+                      trend_neutral=trend_neutral,
                       outside_high=bool(spot > hi), outside_low=bool(spot < lo),
                       vol_surge=vol_surge, was_above=was_above, was_below=was_below,
                       trend_age=d_trend, trade_age=d_trade)
@@ -389,6 +415,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         "sell_low": bool(sell_low),
         "break_low": bool(break_low),
         "break_high": bool(break_high),
+        "trend_neutral": bool(trend_neutral),
         "buy_high": bool(buy_high),
         "sell_high": bool(sell_high),
         "day_pct": day_pct,
@@ -417,7 +444,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
            recl_trend, recl_trade, event, buy_low, sell_low, buy_high, sell_high,
            trade_bull, trend_bull, outside_high=False, outside_low=False,
            vol_surge=False, was_above=False, was_below=False,
-           break_low=False, break_high=False,
+           break_low=False, break_high=False, trend_neutral=False,
            trend_age=None, trade_age=None):
     """(signal, why) from a name's current state. The only place the ladder lives.
 
@@ -448,6 +475,11 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # two conflict the more recent one wins; a tie goes to TREND.
     trend_first = (trend_age is None or trade_age is None
                    or not (broke_trade or recl_trade) or trend_age <= trade_age)
+    # A TREND event inside the neutral band is price crossing a level it is already
+    # resting on. That is not a regime change, and acting on it is the whipsaw the
+    # band exists to stop. The TRADE tier below still runs.
+    if trend_neutral:
+        broke_trend = recl_trend = False
     if broke_trend and trend_first:
         return REMOVE_LONG, event + " - TREND is the position, exit it"
     if recl_trend and trend_first:
@@ -459,12 +491,19 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # so it books the reduction as the lot coming off and realises the P&L -- the
     # signal says "sell some" and the book records what that was worth. TREND going
     # too is the full exit.
+    # A neutral TREND is not a bearish one. It reduces like a bullish TREND does,
+    # because the reason to hold has been muddied rather than contradicted -- only a
+    # TREND we can actually call bearish justifies the full exit.
     if broke_trade and trend_bull:
         return TRIM_LONG, event + " with TREND still bullish - sell some, wait to buy back"
+    if broke_trade and trend_bull is None:
+        return TRIM_LONG, event + " with TREND neutral - sell some, wait for TREND to pick a side"
     if broke_trade:
         return REMOVE_LONG, event + " with TREND already bearish - exit"
     if recl_trade and trend_bull is False:
         return TRIM_SHORT, event + " with TREND still bearish - buy some back, wait to re-short"
+    if recl_trade and trend_bull is None:
+        return TRIM_SHORT, event + " with TREND neutral - buy some back, wait for TREND to pick a side"
     # The re-entry, and it fires on the day of the reclaim only. Every other event
     # flag stays true for FRESH_DAYS so the report keeps showing it, which is right
     # for a sell -- closing an already-closed position is a no-op -- but wrong for a
@@ -476,7 +515,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # A reclaim on a bullish-TREND name that is not today's news is not an
     # instruction at all: the buy already happened when it reclaimed, and there is
     # no short to close. Let it fall through to where price actually sits.
-    if recl_trade and not trend_bull:
+    if recl_trade and trend_bull is False:
         return COVER_SHORT, event + " - close the short"
     # A TREND event that yielded to a fresher TRADE one still stands behind it.
     if broke_trend:
