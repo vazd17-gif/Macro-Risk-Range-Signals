@@ -65,7 +65,11 @@ YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
           "DAX": "^GDAXI", "SSEC": "000001.SS", "KOSPI": "^KS11",
           # Yahoo quotes these as the yield itself, not a price, so the "range"
           # around them is a range in basis points rather than in dollars.
-          "UST2Y": "^FVX", "UST10Y": "^TNX", "UST30Y": "^TYX",
+          # ^FVX is the FIVE-year yield, not the two -- it was mapped to UST2Y and
+          # the newsletter dutifully printed "5-Year" against a row labelled 2Y.
+          # 2YY=F is the CBOT micro 2-year yield future, which is an actual 2-year
+          # yield with the history the range needs.
+          "UST2Y": "2YY=F", "UST10Y": "^TNX", "UST30Y": "^TYX",
           "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F", "TTF": "TTF=F",
           "GOLD": "GC=F", "COPPER": "HG=F", "SILVER": "SI=F"}
 
@@ -73,7 +77,7 @@ MACRO_NAMES = {
     "SPX": "S&P 500", "COMPQ": "NASDAQ Composite", "RUT": "Russell 2000",
     "NIKK": "Nikkei 225", "DAX": "German DAX", "SSEC": "Shanghai Composite",
     "KOSPI": "KOSPI (South Korea)",
-    "UST2Y": "5-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
+    "UST2Y": "2-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
     "UST30Y": "30-Year US Treasury Yield", "USD": "US Dollar Index",
     "WTIC": "WTI Crude Oil", "NATGAS": "US Natural Gas (Henry Hub)",
     "TTF": "European Natural Gas (Dutch TTF)", "GOLD": "Gold Spot",
