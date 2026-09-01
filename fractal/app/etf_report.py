@@ -47,15 +47,15 @@ BULL, BEAR, FLAT = "#0ea37f", "#ef5350", "#8b94a5"
 def _new_badge(r):
     """A mark on instructions that changed since the last session.
 
-    Everything in the list is still true; this says which of it is news. A name
-    holding the same instruction for a week is one call, not five, and without the
-    mark a reader has to remember yesterday's list to know which is which.
+    Only the new ones are marked. Everything in the list is still true, so a name
+    carrying the same instruction as last time needs no label -- the absence of one
+    says it. Marking both halves put a grey word on 21 of 52 rows and made the thing
+    worth spotting harder to spot.
     """
     if not getattr(r, "signal", None):
         return ""                      # nothing was instructed, so nothing is new
     if not getattr(r, "is_new", True):
-        return ('<span style="color:#8b94a5;font-weight:400;font-size:10.5px;'
-                'letter-spacing:.04em"> STANDING</span>')
+        return ""                      # still standing, and silence says that
     return ('<span style="color:#0b8f6e;font-weight:700;font-size:10.5px;'
             'letter-spacing:.04em"> NEW</span>')
 
@@ -731,10 +731,10 @@ def _nl_section(title, colour, blurb, rows, kind, NAMES=None):
             x for x in (html.escape(nm) if nm else "", _f(r.spot)) if x)
         items.append(
             '<tr><td style="padding:9px 0;border-bottom:1px solid #e6e8ec">'
-            '<div><span style="font-weight:700;font-size:15px;color:#111">%s</span>'
+            '<div><span style="font-weight:700;font-size:15px;color:#111">%s</span>%s'
             '<span style="color:#8b94a5;font-size:12px"> &nbsp;%s</span></div>'
             '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">%s</div>'
-            '</td></tr>' % (r.ticker, meta, detail))
+            '</td></tr>' % (r.ticker, _new_badge(r), meta, detail))
     return (
         '<tr><td style="padding:22px 0 6px">'
         '<span style="display:inline-block;background:%s;color:#fff;font-size:12px;font-weight:700;'
@@ -766,11 +766,20 @@ def _explainer():
          "The cycle line, and the one that matters. Price above it is bullish TREND. A "
          "break of TREND is a regime change, not a wobble; a break of TRADE while TREND "
          "holds is usually noise inside an intact move."),
+        ("NEUTRAL",
+         "A third state, and the most common one. When price sits within 1.5% of its "
+         "own TREND line it is too close to call, so the name raises no signal at all "
+         "&mdash; a crossing there is noise rather than a change of regime. Neutral "
+         "names are greyed out and simply do not appear in the sections below."),
         ("PUTTING THEM TOGETHER",
          "Both bullish is trending long; both bearish is trending short; one of each is "
          "counter-trend. The rule that saves the most money: do not buy the low end of "
-         "the RANGE while TRADE is broken. Wait for TREND to hold. Those names sit under "
-         "WATCHLIST rather than BUY."),
+         "the RANGE while TRADE is broken &mdash; wait for TREND to hold. Those names "
+         "are held back rather than listed as a BUY."),
+        ("NEW",
+         "Marks an instruction that changed since the last issue. Anything unmarked is "
+         "one you have already been given and that still stands &mdash; the same call, "
+         "not a fresh one."),
         ("VOLUME",
          "How unusual today&rsquo;s volume is for that name, measured in standard "
          "deviations rather than percent &mdash; a +60% day is routine for a thin fund "
@@ -844,15 +853,9 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
               % (len(closed), realised, _closed_block(closed, dark=False)))
     pf = pf + cl
 
+    # The neutral state is defined in the explainer and counted in the chip row, so
+    # it does not also need a paragraph of its own above the sections.
     n_neutral = int(df["trend_neutral"].sum()) if "trend_neutral" in df else 0
-    neutral_note = ("" if not n_neutral else
-        '<tr><td style="padding:10px 0 0;color:#5a6270;font-size:12.5px;line-height:1.5">'
-        '<b>%d names are NEUTRAL TREND</b> and raise no signal. Price is within %.1f%% of '
-        'its own TREND line &mdash; close enough that a crossing is noise rather than a '
-        'change of regime. Hedgeye publish the same third state; measured against their '
-        'levels, their neutral calls sit a median 0.98%% from the line. Nothing is opened '
-        'or exited on a TREND event here until price picks a side.</td></tr>'
-        % (n_neutral, 100 * S.NEUTRAL_BAND))
 
     blurbs = {
         "BUY": ("Buy. Price at or near the LOW end of the Risk Range with TRADE and "
@@ -971,7 +974,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
             app.append(
                 '<tr>'
                 '<td style="padding:3px 6px 3px 0;color:%s">'
-                '<span style="font-weight:700">%s</span>%s'
+                '<span style="font-weight:700">%s</span>'
                 '<span style="color:#9aa1ad;font-weight:400;font-size:11px"> %s</span></td>'
                 '<td align="right" style="padding:3px 6px">%s</td>'
                 '<td align="right" style="padding:3px 6px;color:#5a6270">%s</td>'
@@ -980,7 +983,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                 '<td align="right" style="padding:3px 0 3px 6px;color:%s">%s</td>'
                 '<td align="right" style="padding:3px 0 3px 10px">%s</td>'
                 '<td align="right" style="padding:3px 0 3px 6px">%s</td>'
-                '</tr>' % (nc, r.ticker, _new_badge(r), html.escape(names.get(r.ticker, "")),
+                '</tr>' % (nc, r.ticker, html.escape(names.get(r.ticker, "")),
                            _f(r.spot), _f(r.range_low), _f(r.range_high),
                            tc, _f(r.trade), nc, _f(r.trend),
                            _z_cell(r.vol_z_1m), _z_cell(r.vol_z_3m)))
@@ -991,7 +994,9 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
         'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0">'
         '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s,
                           counts.get(s, 0))
-        for s in SIGNAL_ORDER)
+        # A chip for a section that is not in the letter is a promise the letter does
+        # not keep -- WATCHLIST has been reading "0" against no section for weeks.
+        for s in SIGNAL_ORDER if counts.get(s, 0))
     # Neutral is a state, not the absence of one, so it is counted where the reader
     # can see it. These names raise no directional signal at all.
     if n_neutral:
@@ -1025,7 +1030,7 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 <tr><td><table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px">%s</table></td></tr>
 </table></td></tr></table></div>
 """ % (_session_label(asof), _universe_label(df), asof, chips,
-       _explainer(), pf, neutral_note + sections,
+       _explainer(), pf, sections,
        "".join(app))
 
 

@@ -587,14 +587,11 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     if buy_low and trend_bull is False:
         return TRIM_SHORT, "low end of RANGE in a bearish TREND - buy some back"
 
-    # Through a range edge without the volume to back it: the weakest read here, so
-    # it comes last. A duration line can sit outside the range -- GII closed with
-    # TREND at 75.46 against a range high of 75.45 -- so when this sat higher up it
-    # swallowed reclaims, reporting them as unconfirmed breakouts.
-    if outside_high and trend_bull and not was_above:
-        return WATCHLIST, "above the RANGE high but not on volume - watch for confirmation"
-    if outside_low and trend_bull is False and not was_below:
-        return WATCHLIST, "below the RANGE low but not on volume - watch for confirmation"
+    # There used to be two more WATCHLIST rules here, for price through a range edge
+    # without the volume to back it -- "watch for confirmation". They were written
+    # when a volume breakout was a trade you could take. With BREAKS_ENABLED off
+    # there is nothing to confirm into, so they were telling a reader to wait for an
+    # event the model can no longer raise. Removed rather than reworded.
     return None, ""
 
 
