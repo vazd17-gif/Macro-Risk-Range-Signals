@@ -16,7 +16,7 @@ weekly and are ignored here. Only the action is used.
 Hedgeye's four actions map onto our headings:
 
     ADD_LONG      -> BUY          (at the low end, or a volume breakout)
-    REMOVE_LONG   -> SELL         (TREND broke) or SELL SOME (TRADE broke, trim)
+    REMOVE_LONG   -> SELL LONGS   (TREND broke) or SELL SOME (TRADE broke, trim)
     ADD_SHORT     -> SELL SHORT   (at the high end, or a volume breakdown)
     REMOVE_SHORT  -> COVER SHORT  (TREND reclaimed) or BUY SOME (TRADE reclaimed)
 
@@ -37,7 +37,7 @@ from ..data.loader import load_params, load_prices, repo_path
 # Hedgeye action -> the headings that count as agreeing with it.
 EXPECTED = {
     "ADD_LONG":     {"BUY"},
-    "REMOVE_LONG":  {"SELL", "SELL SOME"},
+    "REMOVE_LONG":  {"SELL LONGS", "SELL SOME"},
     "ADD_SHORT":    {"SELL SHORT"},
     "REMOVE_SHORT": {"COVER SHORT", "BUY SOME"},
 }
@@ -48,7 +48,7 @@ EXPECTED = {
 SIDE = {"ADD_LONG": "bullish", "REMOVE_SHORT": "bullish",
         "REMOVE_LONG": "bearish", "ADD_SHORT": "bearish"}
 OUR_SIDE = {"BUY": "bullish", "COVER SHORT": "bullish", "BUY SOME": "bullish",
-            "SELL": "bearish", "SELL SOME": "bearish", "SELL SHORT": "bearish"}
+            "SELL LONGS": "bearish", "SELL SOME": "bearish", "SELL SHORT": "bearish"}
 
 
 def _prior_close_pos(close, report_date):

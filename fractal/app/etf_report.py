@@ -33,7 +33,7 @@ SIG_STYLE = {
                               "TREND still bullish"),
     "SELL SOME":  ("#d9a441", "Sell some - TRADE has broken while TREND still holds; "
                               "trim, do not exit"),
-    "SELL":       ("#ef5350", "Sell - TREND has broken; the long comes off"),
+    "SELL LONGS": ("#ef5350", "Sell longs - TREND has broken; the position is flattened, not reversed"),
     "SELL SHORT": ("#c0392b", "Sell short - a bearish TREND rallying into the high "
                               "end of the RANGE"),
     "BUY SOME":   ("#5c9ded", "Buy some - TRADE reclaimed while TREND is still bearish; "
@@ -696,6 +696,7 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     # Derived from the scan set, not the frame: a button for a group with no
     # rows in the table would filter to nothing.
     groups = [g for g in GROUP_LABEL if g in set(scan["group"])]
+    scan_counts = scan["signal"].map(S.LABEL).value_counts().to_dict()
     n_live = df.attrs.get("n_live", 0)
     if live_at:
         # Say how many of the signals the book would actually act on. Without this
@@ -759,7 +760,10 @@ an unusually light one (z &le; &minus;2).
        pf_html,
        vol_html,
        "".join('<button data-sig="%s" aria-pressed="false">%s</button>' % (s, s)
-               for s in SIGNAL_ORDER),
+               # Only for headings with rows behind them. A button that filters the
+               # table to nothing is a dead end, and WATCHLIST has been one for weeks
+               # -- the rule that feeds it almost never fires now.
+               for s in SIGNAL_ORDER if scan_counts.get(s, 0)),
        "".join('<button data-grp="%s" aria-pressed="false">%s</button>'
                % (g, GROUP_LABEL[g]) for g in groups),
        "".join('<th%s>%s</th>' % (' class="opt"' if h in OPTIONAL_COLS else "", h)
@@ -932,8 +936,10 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                       "comes down - TREND is what decides whether you hold at all. The "
                       "book carries no size, so it books the reduction as the whole lot "
                       "and reports what it made under CLOSED TODAY."),
-        "SELL": ("Sell. TREND has broken, which is a regime change rather than a "
-                 "wobble, so the long comes off entirely."),
+        "SELL LONGS": ("Sell longs. TREND has broken, which is a regime change "
+                       "rather than a wobble, so the position comes off entirely. This "
+                       "flattens to no position &mdash; it does not open a short. Going "
+                       "short is a separate call and appears under SELL SHORT."),
         "SELL SHORT": ("Open a short, or avoid if long-only. A bearish TREND has rallied "
                        "into the HIGH end of its Risk Range. TREND decides the side; "
                        "TRADE only times it, so a reclaimed TRADE does not veto the short."),
