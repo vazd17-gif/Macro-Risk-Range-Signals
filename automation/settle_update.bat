@@ -19,7 +19,7 @@ set LOG=fractal\out\logs\settle_%TODAY%.log
 echo ================================================== >> "%LOG%" 2>&1
 echo Settle started %TODAY% %TIME% >> "%LOG%" 2>&1
 
-python -m fractal.app.etf_report --sync >> "%LOG%" 2>&1
+python -m fractal.app.etf_report --settle --sync >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo SETTLE FAILED %TIME% >> "%LOG%" 2>&1
   endlocal

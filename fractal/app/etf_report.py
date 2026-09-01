@@ -31,7 +31,7 @@ from ..data.etf_names import short_names
 SIG_STYLE = {
     "BUY":        ("#0ea37f", "Buy - at the low end of the RANGE with TRADE and "
                               "TREND still bullish"),
-    "SELL SOME":  ("#d9a441", "Sell some - TRADE has broken while TREND still holds; "
+    "TRIM LONGS": ("#d9a441", "Trim longs - TRADE has broken while TREND still holds; "
                               "trim, do not exit"),
     "SELL LONGS": ("#ef5350", "Sell longs - TREND has broken; the position is flattened, not reversed"),
     "SELL SHORT": ("#c0392b", "Sell short - a bearish TREND rallying into the high "
@@ -932,7 +932,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
     blurbs = {
         "BUY": ("Buy. Price at or near the LOW end of the Risk Range with TRADE and "
                 "TREND still bullish."),
-        "SELL SOME": ("Trim. TRADE has broken while TREND still holds, so the position "
+        "TRIM LONGS": ("Trim longs. TRADE has broken while TREND still holds, so the position "
                       "comes down - TREND is what decides whether you hold at all. The "
                       "book carries no size, so it books the reduction as the whole lot "
                       "and reports what it made under CLOSED TODAY."),
@@ -1121,6 +1121,9 @@ def main(argv=None):
     ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")
     ap.add_argument("--live", action="store_true",
                     help="re-price against live quotes; levels stay from the last close")
+    ap.add_argument("--settle", action="store_true",
+                    help="the session is over: include today's completed bar and roll "
+                         "the levels to the next session")
     ap.add_argument("--force-sync", action="store_true",
                     help="run a close-based sync even with intraday positions open")
     ap.add_argument("--sync", action="store_true",
@@ -1131,8 +1134,12 @@ def main(argv=None):
 
     params = load_params()
     tickers = [t.strip().upper() for t in args.tickers.split(",")] if args.tickers else None
+    # Today's bar is partial until the close, so it is excluded unless --settle says
+    # the session is done. The daily job runs before the open and the live job during
+    # the session; both must read the previous close, which is what fixes the levels.
     df = S.run(tickers, params=params, profile=args.profile,
-               edge=args.edge, fresh_days=args.fresh_days)
+               edge=args.edge, fresh_days=args.fresh_days,
+               include_today=args.settle)
     if df.empty:
         print("no data")
         return 1

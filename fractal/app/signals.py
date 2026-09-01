@@ -27,6 +27,7 @@ profile draws a narrower band and would trip the edge rules more often.
 """
 from __future__ import annotations
 
+import datetime as dt
 import io
 import json
 import os
@@ -731,7 +732,7 @@ def mark_new(df, state=None):
 
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT,
-        verbose=True):
+        include_today=False, verbose=True):
     """Evaluate the ETF watchlist. Returns a DataFrame, most actionable first.
 
     `edge` defaults to the VIX-scaled band: one band governs the whole list, because
@@ -758,6 +759,19 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     # Everything newer than the agreed session is trimmed back to it, so a partial
     # print never reaches the model -- which matters most for the VIX itself, since
     # the edge band is read off it.
+    # Today's bar is PARTIAL until the close, so it is dropped unless the caller says
+    # the session is over. Without this the levels quietly re-derive themselves off
+    # incomplete intraday data: at 18:43 on 1 Sep, 166 of 213 names had a part-formed
+    # 09-01 bar, the modal session rolled onto it, and the range a reader had been
+    # given at noon was no longer the range the model was using. The whole promise of
+    # the thing is that the close fixes the levels and they hold all day.
+    today = pd.Timestamp(dt.date.today())
+    if not include_today:
+        for k, d in list(prices.items()):
+            if d is not None and len(d) and d.index[-1] >= today:
+                prices[k] = d.loc[:today - pd.Timedelta(days=1)]
+
+    # One session for the whole list, and it is the one MOST of the list agrees on.
     last = [d.index[-1] for d in prices.values() if d is not None and len(d)]
     if last:
         session = pd.Series(last).mode()
@@ -839,14 +853,14 @@ SIGNALS = (BREAKOUT, ADD_LONG, TRIM_LONG, REMOVE_LONG,
 # keys and identity here has to survive the merge.
 LABEL = {
     ADD_LONG: "BUY",         BREAKOUT: "BUY",
-    TRIM_LONG: "SELL SOME",
+    TRIM_LONG: "TRIM LONGS",
     REMOVE_LONG: "SELL LONGS",
     ADD_SHORT: "SELL SHORT",  BREAKDOWN: "SELL SHORT",
     TRIM_SHORT: "BUY SOME",
     COVER_SHORT: "COVER SHORT",
     WATCHLIST: "WATCHLIST",
 }
-SECTIONS = ("BUY", "SELL SOME", "SELL LONGS", "SELL SHORT", "BUY SOME",
+SECTIONS = ("BUY", "TRIM LONGS", "SELL LONGS", "SELL SHORT", "BUY SOME",
             "COVER SHORT", "WATCHLIST")
 
 

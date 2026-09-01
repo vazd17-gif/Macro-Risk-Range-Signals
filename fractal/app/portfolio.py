@@ -53,10 +53,16 @@ COLUMNS = ["ticker", "side", "entry_date", "entry_price", "shares",
 LONG, SHORT = "long", "short"
 OPEN, CLOSED = "open", "closed"
 
-# Action vocabulary: the order to place. SELL exits a long; SHORT opens or adds to
-# a short. They are different orders and are kept as different words.
+# Action vocabulary: the order to place, in the same words the report uses for the
+# signal that produced it. SELL LONGS flattens a long; SELL SHORT opens or adds to a
+# short. They are different orders and are kept as different words.
+#
+# TRIM LONGS reads as a reduction and IS one as an instruction -- but the book holds
+# no position size, so the lot comes off and the P&L is realised. That is why it sits
+# in AUTO_CLOSE. The reason text has to say so: it read "sell some, TREND still
+# holds", which describes a position that stays, against a book that was closing it.
 A_LONG, A_SELL, A_SHORT, A_TRIM, A_COVER, A_COVER_SOME, A_HOLD = (
-    "LONG", "SELL", "SHORT", "TRIM", "COVER", "COVER SOME", "HOLD")
+    "BUY", "SELL LONGS", "SELL SHORT", "TRIM LONGS", "COVER SHORT", "BUY SOME", "HOLD")
 
 ACTION_COLOUR = {
     A_SELL: "#ef5350", A_SHORT: "#c0392b", A_COVER: "#5c9ded",
@@ -182,7 +188,9 @@ def _action(side, sig, at_low, at_high, event):
         if sig == S.REMOVE_LONG:
             return A_SELL, "%s - exit the long" % (event or "TREND broke")
         if sig == S.TRIM_LONG:
-            return A_TRIM, "%s - sell some, TREND still holds" % (event or "TRADE broke")
+            return A_TRIM, ("%s - TREND still holds, so this is a reduction; with no "
+                            "position size the lot comes off and the P&L is realised"
+                            % (event or "TRADE broke"))
         if sig == S.BREAKOUT:
             return A_LONG, "broke out above the RANGE and held - add"
         # Any BUY is acted on, wherever price sits. This used to require at_low,
@@ -198,9 +206,12 @@ def _action(side, sig, at_low, at_high, event):
     if sig == S.COVER_SHORT:
         return A_COVER, "%s - buy the short back to close it out" % (event or "TREND reclaimed")
     if sig == S.TRIM_SHORT:
-        return A_COVER_SOME, "%s - buy back some, TREND still bearish" % (event or "TRADE reclaimed")
+        return A_COVER_SOME, ("%s - TREND still bearish, so this is a reduction; with no "
+                              "position size the short is bought back in full"
+                              % (event or "TRADE reclaimed"))
     if at_low:
-        return A_COVER_SOME, "at the low end of the RANGE - buy back some of the short"
+        return A_COVER_SOME, ("at the low end of the RANGE - reduce the short; with no "
+                              "position size it is bought back in full")
     if at_high and sig == S.ADD_SHORT:
         return A_SHORT, "at the high end and still bearish - add to the short"
     return A_HOLD, ""
