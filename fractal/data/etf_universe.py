@@ -18,7 +18,7 @@ from __future__ import annotations
 
 RAW = """
 AAAU, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BNO, BUXX, BWET, CANE, CIBR, CLOX,
-CLOZ, COPX, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
+CARZ, CLOZ, COPX, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
 EWC, EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWW, EZA, EFNL,
 EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GII, GLD, GLIN,
 GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
@@ -109,7 +109,7 @@ GROUPS = {
                      "XTL", "XHE", "XOP", "ITA", "ITB", "IAK", "IHF", "PJP", "KRE",
                      "JETS", "OIH", "PSP", "DESK", "FUTY"],
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],
-    "thematic":     ["ARKG", "ARKK", "ARKQ", "CIBR", "SKYY", "QTUM", "DRAM", "XBI",
+    "thematic":     ["ARKG", "ARKK", "ARKQ", "CARZ", "CIBR", "SKYY", "QTUM", "DRAM", "XBI",
                      "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV",
                      "AQWA", "PBD", "PINK", "WOOD", "SLX", "GII"],
     "intl":         ["EEM", "EMXC", "KEMX", "EWA", "EWC", "EWG", "EWH", "EWI", "EWJ", "EWJV",
