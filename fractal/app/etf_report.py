@@ -91,6 +91,24 @@ def _closed_block(closed, dark=True):
 STANCE_COL = {"supportive": "#0ea37f", "risk_off": "#ef5350", "mixed": "#d9a441"}
 
 
+def _provisional(r, live):
+    """True when a signal is a mid-session STATE rather than something that happened.
+
+    Intraday the book only opens on a duration line actually cleared. A name sitting
+    at the low end of its range at 11am has not done anything -- that is just where
+    price is standing, and it says nothing about where it closes. Both readings wore
+    the same green pill, so the dashboard could show twenty buys while the book took
+    two, with nothing on the page explaining the gap.
+
+    Off the close there is no distinction to draw: the levels are fixed and the
+    reading is the decision.
+    """
+    if not live or not getattr(r, "signal", None):
+        return False
+    x = getattr(r, "intraday", "")
+    return not (x and x == x and str(x).strip())
+
+
 def _trend_col(trend_bull):
     """Ticker colour: green above TREND, red below, grey neutral or unknown.
 
@@ -454,6 +472,9 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     asof = df["asof"].max() if len(df) else "-"
     counts = df["signal"].map(S.LABEL).value_counts().to_dict()
 
+    # Whether this build is a live re-price decides whether a signal is something
+    # that happened or just where price is standing.
+    live_at = df.attrs.get("live_at")
     body = []
     for r in df[~df.get("is_index", False)].itertuples() if "is_index" in df else df.itertuples():
         pos = float(np.clip(r.pos_in_range, 0, 1))
@@ -462,8 +483,17 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
         # breakout or a short being closed.
         sig = S.label(r.signal) if r.signal else ""
         colour = SIG_STYLE.get(sig, ("#8b94a5", ""))[0]
-        pill = ('<span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span>'
-                % (colour, colour, colour, html.escape(sig))) if sig else ""
+        prov = _provisional(r, bool(live_at))
+        if not sig:
+            pill = ""
+        elif prov:
+            pill = ('<span class="pill" style="color:%s;background:transparent;'
+                    'border:1px dashed %s66;opacity:.75">%s<span style="font-weight:400;'
+                    'font-size:10px"> &middot; at the edge</span></span>'
+                    % (colour, colour, html.escape(sig)))
+        else:
+            pill = ('<span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span>'
+                    % (colour, colour, colour, html.escape(sig)))
         body.append(
             '<tr id="%s" data-sig="%s" data-grp="%s" data-vol="%s">'
             '<td class="l"><span class="tk" style="color:%s">%s</span> <span class="grp">%s</span></td>'
@@ -639,11 +669,22 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
              "% to low", "% to high", "TRADE", "TREND",
              "Volume", "z vs 1m", "z vs 3m", "Signal", "Why"]
     groups = [g for g in GROUP_LABEL if g in set(df["group"])]
-    live_at = df.attrs.get("live_at")
     n_live = df.attrs.get("n_live", 0)
     if live_at:
+        # Say how many of the signals the book would actually act on. Without this
+        # the strip reads "20 buys" while the book takes two, and nothing on the page
+        # accounts for the difference.
+        n_sig = int(df["signal"].notna().sum())
+        n_prov = sum(1 for r in df.itertuples() if _provisional(r, True))
+        act = n_sig - n_prov
         stamp = ('<span style="color:var(--bull)">&#9679; live</span> &middot; '
                  "%d quotes at %s" % (n_live, live_at.strftime("%H:%M")))
+        if n_sig:
+            stamp += ('<br><span style="color:var(--dim);font-size:12px">'
+                      '%d of %d signals have cleared a line and are actionable now. '
+                      'The other %d are dashed &mdash; price is at the edge of its range '
+                      'this minute, which is not the same as something having happened. '
+                      'They settle at the close.</span>' % (act, n_sig, n_prov))
         refresh = '<meta http-equiv="refresh" content="%d">' % REFRESH_SECONDS
     else:
         stamp = "generated %s" % generated.strftime("%Y-%m-%d %H:%M")
