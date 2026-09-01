@@ -619,23 +619,41 @@ def _state_path():
 
 
 def load_state():
-    """{"asof": date, "signals": {ticker: signal}} from the last session published."""
+    """The last two sessions published: {asof, signals, prev_asof, prev_signals}.
+
+    Two slots rather than one. With a single slot, rebuilding the same session
+    overwrote the comparison it was supposed to be measured against, so the second
+    build of a day reported everything as new and the split silently stopped
+    working. Keeping the previous session as well makes a rebuild idempotent.
+    """
     p = _state_path()
+    empty = {"asof": "", "signals": {}, "prev_asof": "", "prev_signals": {}}
     if not os.path.exists(p):
-        return {"asof": "", "signals": {}}
+        return empty
     try:
         with io.open(p, encoding="utf-8") as fh:
             st = json.load(fh)
-        return {"asof": str(st.get("asof", "")), "signals": dict(st.get("signals", {}))}
+        return {"asof": str(st.get("asof", "")), "signals": dict(st.get("signals", {})),
+                "prev_asof": str(st.get("prev_asof", "")),
+                "prev_signals": dict(st.get("prev_signals", {}))}
     except Exception:
-        return {"asof": "", "signals": {}}
+        return empty
 
 
 def save_state(asof, df):
-    """Record what this session published, so the next one can tell what changed."""
+    """Record this session. A new session pushes the old one into the prev slot;
+    rebuilding the same session replaces it and leaves prev alone."""
+    st = load_state()
     sig = {str(r.ticker): (r.signal or "") for r in df.itertuples() if r.signal}
+    asof = str(asof)
+    if st["asof"] and st["asof"] != asof:
+        prev_asof, prev_sig = st["asof"], st["signals"]
+    else:
+        prev_asof, prev_sig = st["prev_asof"], st["prev_signals"]
     with io.open(_state_path(), "w", encoding="utf-8") as fh:
-        json.dump({"asof": str(asof), "signals": sig}, fh, indent=1, sort_keys=True)
+        json.dump({"asof": asof, "signals": sig,
+                   "prev_asof": prev_asof, "prev_signals": prev_sig},
+                  fh, indent=1, sort_keys=True)
 
 
 def mark_new(df, state=None):
@@ -646,19 +664,18 @@ def mark_new(df, state=None):
     current instruction first appeared, so a reader can see how long it has stood.
     """
     state = load_state() if state is None else state
-    prev = state.get("signals", {})
-    p_asof = state.get("asof", "")
     asof = str(df["asof"].max()) if len(df) else ""
-    same_session = bool(p_asof) and p_asof == asof
+    # Compare against the session before this one. Rebuilding today means the stored
+    # "current" slot is today, so the right comparison is the prev slot -- which is
+    # why there are two.
+    if state.get("asof") == asof:
+        prev, p_asof = state.get("prev_signals", {}), state.get("prev_asof", "")
+    else:
+        prev, p_asof = state.get("signals", {}), state.get("asof", "")
     out = df.copy()
     out["is_new"] = [
         bool(r.signal) and (prev.get(str(r.ticker), "") != (r.signal or ""))
         for r in df.itertuples()]
-    # Re-running the same session must not turn everything stale: when the stored
-    # state IS this session, the comparison is against the session before it, which
-    # we no longer hold -- so keep what was already marked new.
-    if same_session:
-        out["is_new"] = [bool(r.signal) for r in df.itertuples()]
     out["since"] = [(asof if n else p_asof or asof) for n in out["is_new"]]
     return out
 
