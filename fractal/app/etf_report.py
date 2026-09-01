@@ -487,9 +487,11 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
         if not sig:
             pill = ""
         elif prov:
+            # "WATCHLIST BUY" rather than "BUY": the same call, not yet earned. Kept
+            # dashed as well as renamed, so it reads at a glance and on the label.
             pill = ('<span class="pill" style="color:%s;background:transparent;'
-                    'border:1px dashed %s66;opacity:.75">%s<span style="font-weight:400;'
-                    'font-size:10px"> &middot; at the edge</span></span>'
+                    'border:1px dashed %s66;opacity:.8">'
+                    '<span style="font-weight:400">WATCHLIST</span> %s</span>'
                     % (colour, colour, html.escape(sig)))
         else:
             pill = ('<span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span>'
@@ -682,9 +684,9 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
         if n_sig:
             stamp += ('<br><span style="color:var(--dim);font-size:12px">'
                       '%d of %d signals have cleared a line and are actionable now. '
-                      'The other %d are dashed &mdash; price is at the edge of its range '
-                      'this minute, which is not the same as something having happened. '
-                      'They settle at the close.</span>' % (act, n_sig, n_prov))
+                      'The other %d show as WATCHLIST &mdash; price is at the edge of its '
+                      'range this minute, which is not the same as something having '
+                      'happened. They settle at the close.</span>' % (act, n_sig, n_prov))
         refresh = '<meta http-equiv="refresh" content="%d">' % REFRESH_SECONDS
     else:
         stamp = "generated %s" % generated.strftime("%Y-%m-%d %H:%M")
