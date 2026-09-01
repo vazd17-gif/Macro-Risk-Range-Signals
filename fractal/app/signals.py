@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.loader import load_params, load_prices
-from ..data.etf_universe import all_etfs, group_of, is_index, yf_symbol
+from ..data.etf_universe import all_etfs, group_of, is_index, is_macro, yf_symbol
 from ..model import adaptive_ma, range_ewma, state as state_mod
 from ..model.range_ewma import volume_features
 
@@ -368,6 +368,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
                       trend_neutral=trend_neutral,
                       outside_high=bool(spot > hi), outside_low=bool(spot < lo),
                       vol_surge=vol_surge, was_above=was_above, was_below=was_below,
+                      is_mac=is_macro(ticker),
                       trend_age=d_trend, trade_age=d_trade)
 
     if young and sig:
@@ -407,6 +408,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         "vol_flag": vol_flag,
         "cash_like": bool(cash_like),
         "is_index": bool(is_index(ticker)),
+        "is_macro": bool(is_macro(ticker)),
         "history_bars": int(bars),
         "young": bool(young),
         "at_low": bool(at_low),
@@ -444,7 +446,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
            recl_trend, recl_trade, event, buy_low, sell_low, buy_high, sell_high,
            trade_bull, trend_bull, outside_high=False, outside_low=False,
            vol_surge=False, was_above=False, was_below=False,
-           break_low=False, break_high=False, trend_neutral=False,
+           break_low=False, break_high=False, trend_neutral=False, is_mac=False,
            trend_age=None, trade_age=None):
     """(signal, why) from a name's current state. The only place the ladder lives.
 
@@ -460,6 +462,8 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     """
     if is_idx:
         return None, "volatility index - context only, not a position"
+    if is_mac:
+        return None, "macro reference - levels and direction only, not a position"
     if cash_like:
         return None, "range only %.2f%% wide - too tight for a signal" % width_pct
 

@@ -48,8 +48,34 @@ INDICES = """
 VIX, VXN, MOVE
 """
 
+# Macro reference: the indices, yields, currencies and spot commodities Hedgeye
+# publish under "Our Levels" in the Early Look. Carried for the same reason the
+# volatility indices are -- they frame everything else and several are not
+# directly tradeable at all (a yield has no shares). They take levels and a TREND
+# direction but never a buy or sell instruction.
+MACRO = """
+SPX, COMPQ, RUT, NIKK, DAX, SSEC,
+UST2Y, UST10Y, UST30Y,
+USD, WTIC, NATGAS, GOLD, COPPER, SILVER
+"""
+
 # Display ticker -> data-feed symbol, where they differ.
-YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE"}
+YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
+          "SPX": "^GSPC", "COMPQ": "^IXIC", "RUT": "^RUT", "NIKK": "^N225",
+          "DAX": "^GDAXI", "SSEC": "000001.SS",
+          # Yahoo quotes these as the yield itself, not a price, so the "range"
+          # around them is a range in basis points rather than in dollars.
+          "UST2Y": "^FVX", "UST10Y": "^TNX", "UST30Y": "^TYX",
+          "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F",
+          "GOLD": "GC=F", "COPPER": "HG=F", "SILVER": "SI=F"}
+
+MACRO_NAMES = {
+    "SPX": "S&P 500", "COMPQ": "NASDAQ Composite", "RUT": "Russell 2000",
+    "NIKK": "Nikkei 225", "DAX": "German DAX", "SSEC": "Shanghai Composite",
+    "UST2Y": "5-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
+    "UST30Y": "30-Year US Treasury Yield", "USD": "US Dollar Index",
+    "WTIC": "WTI Crude Oil", "NATGAS": "Natural Gas", "GOLD": "Gold Spot",
+    "COPPER": "Copper Spot", "SILVER": "Silver Spot"}
 
 
 def yf_symbol(ticker):
@@ -58,6 +84,11 @@ def yf_symbol(ticker):
 
 def is_index(ticker):
     return ticker in _parse(INDICES)
+
+
+def is_macro(ticker):
+    """Reference instrument: levels and a direction, never a position."""
+    return ticker in _parse(MACRO)
 
 
 # Grouping for the dashboard and newsletter. Anything unlisted falls to "other".
@@ -87,6 +118,7 @@ GROUPS = {
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
     "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT"],
     "volatility":   ["VIX", "VXN", "MOVE"],
+    "macro":        _parse(MACRO),
     # Derived from the STOCKS block above rather than restated. It was a second copy
     # of the same list, so every single name added to the watchlist landed in "other"
     # until someone remembered to add it here too -- which is a grouping bug that
@@ -109,7 +141,7 @@ UNRESOLVED = {}
 def all_etfs(include_unresolved: bool = False):
     """Flat, de-duplicated watchlist in declaration order: funds, then single names."""
     seen, out = set(), []
-    for t in _parse(INDICES) + _parse(RAW) + _parse(STOCKS):
+    for t in _parse(INDICES) + _parse(MACRO) + _parse(RAW) + _parse(STOCKS):
         if not t or t in seen:
             continue
         if not include_unresolved and t in UNRESOLVED:

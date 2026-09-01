@@ -120,10 +120,12 @@ def _universe_label(df):
     """e.g. "143 ETFs, 32 stocks, 2 vol indices" -- the list is no longer funds only."""
     n_stock = int((df["group"] == "stock").sum()) if "group" in df else 0
     n_idx = int(df["is_index"].sum()) if "is_index" in df else 0
-    n_fund = len(df) - n_stock - n_idx
+    n_mac = int(df["is_macro"].sum()) if "is_macro" in df else 0
+    n_fund = len(df) - n_stock - n_idx - n_mac
     parts = []
     for n, one, many in ((n_fund, "ETF", "ETFs"), (n_stock, "stock", "stocks"),
-                         (n_idx, "vol index", "vol indices")):
+                         (n_idx, "vol index", "vol indices"),
+                         (n_mac, "macro ref", "macro refs")):
         if n:
             parts.append("%d %s" % (n, one if n == 1 else many))
     return ", ".join(parts) or "%d names" % len(df)
@@ -243,6 +245,45 @@ def _index_rows(idx):
             read, col = "mixed", "#d9a441"
         out.append((r.ticker, r.spot, r.trade, r.trend, read, col))
     return out
+
+
+def _macro_block(df, dark=True):
+    """Hedgeye's "Our Levels" in our own numbers: the indices, yields, currencies
+    and commodities that frame everything else.
+
+    Levels and a direction, never an instruction -- a yield has no shares, and the
+    point of carrying them is context. Direction is the three-state read, so a name
+    resting on its TREND line says so rather than being forced to a side.
+    """
+    if "is_macro" not in df:
+        return ""
+    m = df[df["is_macro"] == True]
+    if not len(m):
+        return ""
+    from ..data.etf_universe import MACRO_NAMES, MACRO, _parse
+    order = {t: i for i, t in enumerate(_parse(MACRO))}
+    m = m.sort_values("ticker", key=lambda c: c.map(lambda t: order.get(t, 999)))
+    line, dim, ink = (("var(--line)", "var(--dim)", "var(--ink)") if dark
+                      else ("#e6e8ec", "#8b94a5", "#111"))
+    rows = []
+    for r in m.itertuples():
+        if r.trend_neutral:
+            d, dc = "neutral", "#8b94a5"
+        elif r.trend_bull is True:
+            d, dc = "bullish", "#0ea37f"
+        else:
+            d, dc = "bearish", "#ef5350"
+        rows.append(
+            '<tr><td style="padding:6px 0;border-bottom:1px solid %s;color:%s">'
+            '<span style="font-weight:700">%s</span>'
+            '<span style="color:%s;font-size:12px"> &nbsp;%s</span></td>'
+            '<td align="right" style="padding:6px 0;border-bottom:1px solid %s;'
+            'font-variant-numeric:tabular-nums;color:%s">%s &ndash; %s</td>'
+            '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
+            'color:%s;font-weight:650;font-size:12.5px">%s</td></tr>'
+            % (line, ink, r.ticker, dim, html.escape(MACRO_NAMES.get(r.ticker, "")),
+               line, ink, _f(r.range_low), _f(r.range_high), line, dc, d))
+    return "".join(rows)
 
 
 def _session_label(asof):
@@ -529,6 +570,15 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             '<div style="color:%s;font-size:12.5px;margin-bottom:10px">%s</div>'
             '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px">%s</div>'
             % (ncol, note, cells))
+    mac = _macro_block(df, dark=True)
+    if mac:
+        vol_html += (
+            '<h2 style="font-size:15px;margin:6px 0 9px;letter-spacing:-.01em">Macro '
+            '<span style="color:var(--dim);font-weight:400;font-size:13px">'
+            '&middot; indices, yields, FX and commodities &middot; levels only, never a '
+            'position</span></h2>'
+            '<div class="tablewrap" style="margin-bottom:24px">'
+            '<table style="min-width:460px"><tbody>%s</tbody></table></div>' % mac)
 
     pf_html = ""
     if book is not None and not book.empty:
@@ -886,9 +936,29 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
             % (ncol, note, items)) + sections
 
+    # Macro sits directly under volatility, because both frame the list rather than
+    # instructing anything in it -- Hedgeye run their "Our Levels" the same way.
+    mac = _macro_block(df, dark=False)
+    if mac:
+        sections = (
+            '<tr><td style="padding:22px 0 6px">'
+            '<span style="display:inline-block;background:#334155;color:#fff;font-size:12px;'
+            'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
+            'MACRO</span>'
+            '<div style="color:#5a6270;font-size:12.5px;margin-top:7px">'
+            'Indices, Treasury yields, the dollar and spot commodities. Levels and a '
+            'direction only &mdash; none of these is a position, and a yield has no '
+            'shares to hold.</div></td></tr>'
+            '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
+            % mac) + sections
+
     # appendix: every name, compact
     app = []
-    for g, grp in (df[~df["is_index"]] if "is_index" in df else df).groupby("group", sort=False):
+    tradeable = df
+    for col in ("is_index", "is_macro"):
+        if col in tradeable:
+            tradeable = tradeable[~tradeable[col].astype(bool)]
+    for g, grp in tradeable.groupby("group", sort=False):
         app.append('<tr><td colspan="8" style="padding:14px 0 4px;font-weight:700;font-size:12px;'
                    'color:#8b94a5;letter-spacing:.05em;text-transform:uppercase">%s</td></tr>'
                    % GROUP_LABEL.get(g, g))
