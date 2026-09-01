@@ -54,7 +54,7 @@ VIX, VXN, MOVE
 # directly tradeable at all (a yield has no shares). They take levels and a TREND
 # direction but never a buy or sell instruction.
 MACRO = """
-SPX, COMPQ, RUT, NIKK, DAX, SSEC,
+SPX, COMPQ, RUT, NIKK, DAX, SSEC, KOSPI,
 UST2Y, UST10Y, UST30Y,
 USD, WTIC, NATGAS, GOLD, COPPER, SILVER
 """
@@ -62,7 +62,7 @@ USD, WTIC, NATGAS, GOLD, COPPER, SILVER
 # Display ticker -> data-feed symbol, where they differ.
 YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
           "SPX": "^GSPC", "COMPQ": "^IXIC", "RUT": "^RUT", "NIKK": "^N225",
-          "DAX": "^GDAXI", "SSEC": "000001.SS",
+          "DAX": "^GDAXI", "SSEC": "000001.SS", "KOSPI": "^KS11",
           # Yahoo quotes these as the yield itself, not a price, so the "range"
           # around them is a range in basis points rather than in dollars.
           "UST2Y": "^FVX", "UST10Y": "^TNX", "UST30Y": "^TYX",
@@ -72,6 +72,7 @@ YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
 MACRO_NAMES = {
     "SPX": "S&P 500", "COMPQ": "NASDAQ Composite", "RUT": "Russell 2000",
     "NIKK": "Nikkei 225", "DAX": "German DAX", "SSEC": "Shanghai Composite",
+    "KOSPI": "KOSPI (South Korea)",
     "UST2Y": "5-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
     "UST30Y": "30-Year US Treasury Yield", "USD": "US Dollar Index",
     "WTIC": "WTI Crude Oil", "NATGAS": "Natural Gas", "GOLD": "Gold Spot",
