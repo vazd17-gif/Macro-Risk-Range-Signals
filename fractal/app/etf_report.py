@@ -1191,7 +1191,19 @@ def main(argv=None):
             else:
                 P.sync(df, custom=args.portfolio)
         elif df.attrs.get("live_at") is not None:
-            P.sync(df, custom=args.portfolio, only_intraday=True)
+            # Once the session has settled, a live pass is reading an OLDER close
+            # than the book was last squared against -- it would reopen what the
+            # settle just closed. That is the mirror of the mid-session guard above,
+            # and it caught me out: a live run a minute after the settle reopened
+            # PSCC and JPM and published an intraday dashboard over the settled one.
+            settled = S.load_state().get("asof", "")
+            here = str(df.attrs.get("asof", stamp))
+            if settled and settled > here and not args.force_sync:
+                print("[sync] SKIPPED - the %s session has already settled; a live pass "
+                      "reads the %s close and would reopen what the settle closed. "
+                      "Pass --force-sync to override." % (settled, here))
+            else:
+                P.sync(df, custom=args.portfolio, only_intraday=True)
     book = P.reconcile(df, custom=args.portfolio, live=args.live)
     # A reduction is only real once the lot is off, so both surfaces report it. The
     # exit is stamped with the close it was decided on, which for an intraday run is
