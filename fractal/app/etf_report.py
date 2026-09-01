@@ -492,7 +492,14 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     # that happened or just where price is standing.
     live_at = df.attrs.get("live_at")
     body = []
-    for r in df[~df.get("is_index", False)].itertuples() if "is_index" in df else df.itertuples():
+    # The scan table is the tradeable list. Volatility indices and macro references
+    # have their own blocks above it and are not positions, so they do not belong in
+    # a table whose every other row is something you could buy.
+    scan = df
+    for _col in ("is_index", "is_macro"):
+        if _col in scan:
+            scan = scan[~scan[_col].astype(bool)]
+    for r in scan.itertuples():
         pos = float(np.clip(r.pos_in_range, 0, 1))
         # The pill and the filter both carry the heading; the reason survives in
         # the "why" column, so a BUY row still says whether it is an edge, a
@@ -686,7 +693,9 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
              "% to low", "% to high", "TRADE", "TREND",
              "Volume", "z vs 1m", "z vs 3m", "Signal", "Why"]
-    groups = [g for g in GROUP_LABEL if g in set(df["group"])]
+    # Derived from the scan set, not the frame: a button for a group with no
+    # rows in the table would filter to nothing.
+    groups = [g for g in GROUP_LABEL if g in set(scan["group"])]
     n_live = df.attrs.get("n_live", 0)
     if live_at:
         # Say how many of the signals the book would actually act on. Without this
