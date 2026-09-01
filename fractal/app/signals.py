@@ -61,17 +61,26 @@ EDGE = 0.20
 # The cost is concentration: half as many names, and annualised vol rises from
 # 15.5% to 21.6%.
 #
-# The hard side of each extreme is a tenth, not a twentieth. At 0.05 the leaning-
-# against trade effectively did not exist: with a calm VIX, not one bearish name in
-# the list came within 0.40 of the short trigger, so the model was long-only in the
-# three quarters of sessions that are calm. A tenth of the range still means "at the
-# end of it" while leaving the trade reachable.
+# The two sides are NOT comparable as fractions, because the range is not centred.
+# With m_up 2.25 and m_dn 1.75, price sitting exactly on the 5-day anchor is at 0.43
+# rather than 0.50, so the high is further away than the low. A 0.15 buy band asks
+# for a 1.13-sigma fall; a 0.10 sell band asks for a 1.86-sigma rally -- 64% harder
+# for the same nominal number.
+#
+# That made the short unreachable rather than strict. Over 256 sessions and 10,673
+# bearish name-days, price cleared 0.90 exactly THREE times, against 568 buy
+# triggers. The model was long-only for a year and it was arithmetic, not judgment.
+#
+# The sell bands below are set so the short asks a comparable move to the buy: 0.25
+# in calm puts the trigger at 0.75 of the range, about +1.36 sigma. The regime skew
+# survives -- still slower to short when the VIX is low, quicker when it is high --
+# it is just expressed in sigmas the two sides actually share.
 #
 # The band follows the DIRECTION OF THE ACTION, not which end of the range it sits
 # at.
-EDGE_BY_VIX = ((19.0, 0.15, 0.10),    # calm: quick to buy, slow to short
-               (29.0, 0.10, 0.10),    # chop: even-handed
-               (None, 0.10, 0.25))    # stress: slow to buy, quick to sell
+EDGE_BY_VIX = ((19.0, 0.15, 0.25),    # calm: quick to buy, slow to short
+               (29.0, 0.10, 0.30),    # chop: even-handed in sigma terms
+               (None, 0.10, 0.40))    # stress: slow to buy, quick to short
 
 EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 
