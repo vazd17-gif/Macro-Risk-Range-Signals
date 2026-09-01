@@ -56,7 +56,7 @@ VIX, VXN, MOVE
 MACRO = """
 SPX, COMPQ, RUT, NIKK, DAX, SSEC, KOSPI,
 UST2Y, UST10Y, UST30Y,
-USD, WTIC, NATGAS, GOLD, COPPER, SILVER
+USD, WTIC, NATGAS, TTF, GOLD, COPPER, SILVER
 """
 
 # Display ticker -> data-feed symbol, where they differ.
@@ -66,7 +66,7 @@ YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
           # Yahoo quotes these as the yield itself, not a price, so the "range"
           # around them is a range in basis points rather than in dollars.
           "UST2Y": "^FVX", "UST10Y": "^TNX", "UST30Y": "^TYX",
-          "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F",
+          "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F", "TTF": "TTF=F",
           "GOLD": "GC=F", "COPPER": "HG=F", "SILVER": "SI=F"}
 
 MACRO_NAMES = {
@@ -75,7 +75,8 @@ MACRO_NAMES = {
     "KOSPI": "KOSPI (South Korea)",
     "UST2Y": "5-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
     "UST30Y": "30-Year US Treasury Yield", "USD": "US Dollar Index",
-    "WTIC": "WTI Crude Oil", "NATGAS": "Natural Gas", "GOLD": "Gold Spot",
+    "WTIC": "WTI Crude Oil", "NATGAS": "US Natural Gas (Henry Hub)",
+    "TTF": "European Natural Gas (Dutch TTF)", "GOLD": "Gold Spot",
     "COPPER": "Copper Spot", "SILVER": "Silver Spot"}
 
 
