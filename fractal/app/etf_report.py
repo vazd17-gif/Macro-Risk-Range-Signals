@@ -280,12 +280,15 @@ def _macro_block(df, dark=True):
             '<tr><td style="padding:6px 0;border-bottom:1px solid %s">'
             '<span style="font-weight:700;color:%s">%s</span>'
             '<span style="color:%s;font-size:12px"> &nbsp;%s</span></td>'
-            '<td align="right" style="padding:6px 0;border-bottom:1px solid %s;'
+            '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
+            'font-variant-numeric:tabular-nums;font-weight:650;color:%s">%s</td>'
+            '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
             'font-variant-numeric:tabular-nums;color:%s">%s &ndash; %s</td>'
             '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
             'color:%s;font-weight:650;font-size:12.5px">%s</td></tr>'
             % (line, dc, r.ticker, dim, html.escape(MACRO_NAMES.get(r.ticker, "")),
-               line, ink, _f(r.range_low), _f(r.range_high), line, dc, d))
+               line, ink, _f(r.spot),
+               line, dim, _f(r.range_low), _f(r.range_high), line, dc, d))
     return "".join(rows)
 
 
@@ -947,11 +950,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
             '<tr><td style="padding:22px 0 6px">'
             '<span style="display:inline-block;background:#334155;color:#fff;font-size:12px;'
             'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
-            'MACRO</span>'
-            '<div style="color:#5a6270;font-size:12.5px;margin-top:7px">'
-            'Indices, Treasury yields, the dollar and spot commodities. Levels and a '
-            'direction only &mdash; none of these is a position, and a yield has no '
-            'shares to hold.</div></td></tr>'
+            'MACRO</span></td></tr>'
             '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
             % mac) + sections
 

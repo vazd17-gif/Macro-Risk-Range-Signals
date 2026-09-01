@@ -238,6 +238,31 @@ def events(df):
         cross = getattr(r, "intraday", "")
         cross = "" if (cross is None or cross != cross) else str(cross).strip()
 
+        # A macro reference is never a position either, but the S&P losing TREND or
+        # the 10-year reclaiming it is worth knowing the moment it happens -- it
+        # reframes the whole list. Alerted like the volatility indices: only on an
+        # actual crossing, never on where price merely sits, and never as an
+        # instruction. Nothing here asks anyone to buy or sell.
+        if getattr(r, "is_macro", False):
+            if not cross:
+                flips = []
+                for name, key in (("TREND", "trend"), ("TRADE", "trade")):
+                    if _num(getattr(r, key + "_flip_days", None)) == 0:
+                        bull = _bull(getattr(r, key + "_bull", None))
+                        if bull is not None:
+                            flips.append(("reclaimed " if bull else "lost ") + name)
+                cross = " and ".join(flips)
+            if cross:
+                out.append(Event(
+                    key="%s|%s" % (tk, cross),
+                    title="%s %s" % (tk, cross),
+                    body=nl.join(_detail(r) + ["Macro reference - context, not a position."]),
+                    short="%s %s at %s" % (tk, cross, spot),
+                    urgent=False,
+                    tag=TAGS.get(cross.split(" ")[0], ""),
+                    index=True))
+            continue
+
         # A volatility index never carries a position, so it never produces a
         # signal -- but a regime shift in it frames every other name on the page,
         # which is the whole reason it is worth waking a phone for.
@@ -373,7 +398,10 @@ def notify(df, asof="", verbose=True, dry=False, seed=False):
     # day. Vol indices are exempt -- a regime read is context, not a position.
     if "is_new" in getattr(df, "columns", []):
         keep = set(df.loc[df["is_new"].fillna(True).astype(bool), "ticker"])
-        idx = set(df.loc[df.get("is_index", False) == True, "ticker"]) if "is_index" in df else set()
+        idx = set()
+        for col in ("is_index", "is_macro"):
+            if col in df:
+                idx |= set(df.loc[df[col].astype(bool), "ticker"])
         src = df[df["ticker"].isin(keep | idx)]
     else:
         src = df
