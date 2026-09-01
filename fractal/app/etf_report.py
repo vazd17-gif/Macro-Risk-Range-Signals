@@ -91,6 +91,22 @@ def _closed_block(closed, dark=True):
 STANCE_COL = {"supportive": "#0ea37f", "risk_off": "#ef5350", "mixed": "#d9a441"}
 
 
+def _intraday_positions(custom, asof):
+    """Open positions this session's live job put on, which a close-based sync would
+    wrongly shut. Returns their tickers."""
+    from ..data.loader import next_session
+    nxt = next_session(asof)
+    session = nxt.strftime("%Y-%m-%d") if nxt is not None else str(asof)
+    try:
+        book = P.open_positions(custom)
+    except Exception:
+        return set()
+    if book.empty or "notes" not in book:
+        return set()
+    m = (book["entry_date"].astype(str) == session) &         book["notes"].astype(str).str.contains("intraday", case=False, na=False)
+    return set(book.loc[m, "ticker"])
+
+
 def _provisional(r, live):
     """True when a signal is a mid-session STATE rather than something that happened.
 
@@ -1090,6 +1106,8 @@ def main(argv=None):
     ap.add_argument("--portfolio", default=None, help="portfolio CSV (default data/portfolio.csv)")
     ap.add_argument("--live", action="store_true",
                     help="re-price against live quotes; levels stay from the last close")
+    ap.add_argument("--force-sync", action="store_true",
+                    help="run a close-based sync even with intraday positions open")
     ap.add_argument("--sync", action="store_true",
                     help="open portfolio positions for today's range breaks")
     ap.add_argument("--push", action="store_true",
@@ -1135,7 +1153,21 @@ def main(argv=None):
     # stale-quote pass re-prices nothing and would act on the close twice.
     if args.sync:
         if not args.live:
-            P.sync(df, custom=args.portfolio)
+            # A close-based sync judges the book against the PREVIOUS close. Run it
+            # while a session is open and it closes whatever the live job opened
+            # during that session, because those names still read as yesterday left
+            # them -- then the next live pass reopens them. That churn is how JPM
+            # came to be opened three times and closed twice in one afternoon.
+            intraday_held = _intraday_positions(args.portfolio,
+                                                str(df.attrs.get("asof", stamp)))
+            if intraday_held and not args.force_sync:
+                print("[sync] SKIPPED - %d position(s) were opened intraday this "
+                      "session (%s). A close-based sync would judge them against the "
+                      "previous close and shut them. Re-run after the close, or pass "
+                      "--force-sync if that is what you want."
+                      % (len(intraday_held), ", ".join(sorted(intraday_held))))
+            else:
+                P.sync(df, custom=args.portfolio)
         elif df.attrs.get("live_at") is not None:
             P.sync(df, custom=args.portfolio, only_intraday=True)
     book = P.reconcile(df, custom=args.portfolio, live=args.live)

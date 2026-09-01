@@ -258,9 +258,13 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
     entry = dict(zip(held["ticker"], held["entry_price"])) if not held.empty else {}
     opened, closed = [], []
 
-    def _close(tk, price, why):
+    def _close(tk, price, why, when=None):
         side, ent = have.get(tk), entry.get(tk)
-        n, px = close_position(tk, price=price, date=None, custom=custom)
+        # Dated to the session it happened in, exactly as an entry is. Left to
+        # default, an intraday exit landed on the PREVIOUS close, so every intraday
+        # round trip recorded an exit_date before its own entry_date and the closes
+        # filed themselves under yesterday.
+        n, px = close_position(tk, price=price, date=when, custom=custom)
         sign = 1.0 if side == LONG else -1.0
         pnl = (100.0 * sign * (px / float(ent) - 1.0)) if ent else float("nan")
         have.pop(tk, None)
@@ -271,18 +275,18 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
     for r in sig_df.itertuples():
         sig = getattr(r, "signal", None)
         tk, price = r.ticker, float(r.spot)
+        # An intraday fill belongs to the session it happened in, not to the close
+        # the levels came from. Computed once, and used by both sides.
+        when = next_session(getattr(r, "asof", "")) if only_intraday else getattr(r, "asof", "")
         side_out = AUTO_CLOSE.get(sig)
         if side_out and have.get(tk) == side_out:
-            _close(tk, price, sig)
+            _close(tk, price, sig, when=when)
 
         side_in = AUTO_OPEN.get(sig)
         if side_in is None or have.get(tk) == side_in:
             continue
         if tk in have:                      # holding the other way: flip it
-            _close(tk, price, "%s - flipping to %s" % (sig, side_in))
-        # An intraday fill belongs to the session it happened in, not to the close
-        # the levels came from.
-        when = next_session(getattr(r, "asof", "")) if only_intraday else getattr(r, "asof", "")
+            _close(tk, price, "%s - flipping to %s" % (sig, side_in), when=when)
         row = add_position(tk, side_in, price=price, date=str(when) or None,
                            notes="auto: %s%s" % (sig, " (intraday)" if only_intraday else ""),
                            custom=custom)
