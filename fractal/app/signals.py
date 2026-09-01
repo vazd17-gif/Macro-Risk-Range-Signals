@@ -47,10 +47,19 @@ EDGE = 0.20
 
 # The band that counts as "at the end" of the range is set by the volatility
 # regime, and it is asymmetric: the side that opens risk and the side that sheds it
-# get different widths. Below 19 the model leans into buying -- a quarter of the
-# range counts as a buy zone while only a tenth counts as a place to short. In the
-# middle it is even. Above 29 it inverts: buying needs the extreme, selling triggers
-# early.
+# get different widths. Below 19 the model leans into buying, though only mildly
+# now. In the middle it is even. Above 29 it inverts: buying needs the extreme,
+# selling triggers early.
+#
+# The calm buy band was 0.25 -- a quarter of the range counted as "the low end",
+# against Hedgeye's wording of "near or at". Over 256 sessions that put 17.7 names
+# in the book on an average day and turned 962 trades. At 0.15 it is 7.6 names and
+# 410 trades, with the return difference against the wider band not distinguishable
+# from noise (t = 0.34 on the paired daily difference). The turnover is the reason
+# for the change; the P&L is a wash and is not claimed as a benefit.
+#
+# The cost is concentration: half as many names, and annualised vol rises from
+# 15.5% to 21.6%.
 #
 # The hard side of each extreme is a tenth, not a twentieth. At 0.05 the leaning-
 # against trade effectively did not exist: with a calm VIX, not one bearish name in
@@ -60,7 +69,7 @@ EDGE = 0.20
 #
 # The band follows the DIRECTION OF THE ACTION, not which end of the range it sits
 # at.
-EDGE_BY_VIX = ((19.0, 0.25, 0.10),    # calm: quick to buy, slow to short
+EDGE_BY_VIX = ((19.0, 0.15, 0.10),    # calm: quick to buy, slow to short
                (29.0, 0.10, 0.10),    # chop: even-handed
                (None, 0.10, 0.25))    # stress: slow to buy, quick to sell
 
