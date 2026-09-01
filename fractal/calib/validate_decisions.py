@@ -18,7 +18,7 @@ Hedgeye's four actions map onto our headings:
     ADD_LONG      -> BUY          (at the low end, or a volume breakout)
     REMOVE_LONG   -> SELL LONGS   (TREND broke) or TRIM LONGS (TRADE broke)
     ADD_SHORT     -> SELL SHORT   (at the high end, or a volume breakdown)
-    REMOVE_SHORT  -> COVER SHORT  (TREND reclaimed) or BUY SOME (TRADE reclaimed)
+    REMOVE_SHORT  -> COVER SHORT  (TREND reclaimed) or TRIM SHORTS (TRADE reclaimed)
 
 A trim counts as agreement with a removal. Hedgeye's list is binary -- a name is on
 it or it is not -- so a partial exit is the closest thing we have to "came off the
@@ -39,7 +39,7 @@ EXPECTED = {
     "ADD_LONG":     {"BUY"},
     "REMOVE_LONG":  {"SELL LONGS", "TRIM LONGS"},
     "ADD_SHORT":    {"SELL SHORT"},
-    "REMOVE_SHORT": {"COVER SHORT", "BUY SOME"},
+    "REMOVE_SHORT": {"COVER SHORT", "TRIM SHORTS"},
 }
 
 # Directional agreement: did we at least lean the same way, even if the exact
@@ -47,7 +47,7 @@ EXPECTED = {
 # are both "get out of / against this name".
 SIDE = {"ADD_LONG": "bullish", "REMOVE_SHORT": "bullish",
         "REMOVE_LONG": "bearish", "ADD_SHORT": "bearish"}
-OUR_SIDE = {"BUY": "bullish", "COVER SHORT": "bullish", "BUY SOME": "bullish",
+OUR_SIDE = {"BUY": "bullish", "COVER SHORT": "bullish", "TRIM SHORTS": "bullish",
             "SELL LONGS": "bearish", "TRIM LONGS": "bearish", "SELL SHORT": "bearish"}
 
 

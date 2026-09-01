@@ -36,7 +36,7 @@ SIG_STYLE = {
     "SELL LONGS": ("#ef5350", "Sell longs - TREND has broken; the position is flattened, not reversed"),
     "SELL SHORT": ("#c0392b", "Sell short - a bearish TREND rallying into the high "
                               "end of the RANGE"),
-    "BUY SOME":   ("#5c9ded", "Buy some - TRADE reclaimed while TREND is still bearish; "
+    "TRIM SHORTS": ("#5c9ded", "Trim shorts - TRADE reclaimed while TREND is still bearish; "
                               "buy back part of the short"),
     "COVER SHORT":("#5c9ded", "Cover - TREND reclaimed; close the short out"),
     "WATCHLIST":  ("#8b94a5", "Watchlist - nothing to act on yet"),
@@ -943,7 +943,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
         "SELL SHORT": ("Open a short, or avoid if long-only. A bearish TREND has rallied "
                        "into the HIGH end of its Risk Range. TREND decides the side; "
                        "TRADE only times it, so a reclaimed TRADE does not veto the short."),
-        "BUY SOME": ("Buy back part of the short. TRADE has been reclaimed while TREND "
+        "TRIM SHORTS": ("Trim shorts. TRADE has been reclaimed while TREND "
                      "is still bearish, so the short comes down but the bearish call "
                      "stands. The book carries no size, so it buys the whole short back "
                      "and reports what it made under CLOSED TODAY."),

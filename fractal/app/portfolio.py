@@ -62,7 +62,7 @@ OPEN, CLOSED = "open", "closed"
 # in AUTO_CLOSE. The reason text has to say so: it read "sell some, TREND still
 # holds", which describes a position that stays, against a book that was closing it.
 A_LONG, A_SELL, A_SHORT, A_TRIM, A_COVER, A_COVER_SOME, A_HOLD = (
-    "BUY", "SELL LONGS", "SELL SHORT", "TRIM LONGS", "COVER SHORT", "BUY SOME", "HOLD")
+    "BUY", "SELL LONGS", "SELL SHORT", "TRIM LONGS", "COVER SHORT", "TRIM SHORTS", "HOLD")
 
 ACTION_COLOUR = {
     A_SELL: "#ef5350", A_SHORT: "#c0392b", A_COVER: "#5c9ded",
