@@ -107,6 +107,31 @@ def build_message(to_addrs, subject=None, html_path=None, sender=None, as_draft=
     return msg
 
 
+def deliver(msg, to_addrs):
+    """Put a built message on the wire. Lifted out of send() so other reports can
+    use the same credentials and the same error handling without restating either."""
+    user = (os.environ.get("FRACTAL_SMTP_USER") or "").strip()
+    pwd = "".join((os.environ.get("FRACTAL_SMTP_PASS") or "").split())
+    if not user or not pwd:
+        raise RuntimeError(
+            "set FRACTAL_SMTP_USER and FRACTAL_SMTP_PASS in the environment "
+            "(use a Gmail app password, not the account password)")
+    if not msg.get("From"):
+        msg["From"] = user
+    ctx = ssl.create_default_context()
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as smtp:
+            smtp.login(user, pwd)
+            smtp.send_message(msg, from_addr=user, to_addrs=list(to_addrs))
+    except smtplib.SMTPAuthenticationError as e:
+        raise RuntimeError(
+            "Gmail rejected the login for %s. Use a 16-character app password from "
+            "myaccount.google.com/apppasswords, not the account password, and make "
+            "sure 2-Step Verification is on for that account. (%s)"
+            % (user, getattr(e, "smtp_code", "auth error"))) from None
+    return True
+
+
 def send(to_addrs, subject=None, html_path=None, force=False):
     """Send via SMTP. Skips unless the data has moved on, unless `force`."""
     asof = report_asof()
@@ -124,17 +149,7 @@ def send(to_addrs, subject=None, html_path=None, force=False):
             "(use a Gmail app password, not the account password)")
 
     msg = build_message(to_addrs, subject, html_path, sender=user)
-    ctx = ssl.create_default_context()
-    try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as smtp:
-            smtp.login(user, pwd)
-            smtp.send_message(msg, from_addr=user, to_addrs=list(to_addrs))
-    except smtplib.SMTPAuthenticationError as e:
-        raise RuntimeError(
-            "Gmail rejected the login for %s. Use a 16-character app password from "
-            "myaccount.google.com/apppasswords, not the account password, and make "
-            "sure 2-Step Verification is on for that account. (%s)"
-            % (user, getattr(e, "smtp_code", "auth error"))) from None
+    deliver(msg, to_addrs)
     if asof:
         mark_sent(asof)
     print("[publish] sent the %s report to %d bcc recipient(s): %s"
