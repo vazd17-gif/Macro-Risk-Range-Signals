@@ -26,11 +26,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM P&L track, once the book has been squared against the close. Goes to the owner
+REM ONLY -- this is the private performance record, not the newsletter, and it must
+REM never reach the distribution list. The address is hard-coded here rather than
+REM read from FRACTAL_MAIL_TO precisely so that adding a newsletter recipient can
+REM never quietly add them to this.
+python -m fractal.app.track --send-to vazd17@gmail.com >> "%LOG%" 2>&1
+if errorlevel 1 echo TRACK FAILED %TIME% >> "%LOG%" 2>&1
+
 if not exist "docs" mkdir "docs"
 copy /Y "fractal\out\etf_dashboard.html" "docs\index.html" >nul
 git rev-parse --is-inside-work-tree >nul 2>&1
 if not errorlevel 1 (
-  git add docs fractal\data\portfolio.csv >nul 2>&1
+  git add docs fractal\data\portfolio.csv fractal\data\pnl_track.csv >nul 2>&1
   git diff --cached --quiet || git commit -q -m "settle: dashboard off the %TODAY% close" >> "%LOG%" 2>&1
   git push -q >> "%LOG%" 2>&1
 )
