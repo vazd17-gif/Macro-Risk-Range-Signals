@@ -2,6 +2,7 @@ ticker,side,entry_date,entry_price,shares,notes,status,exit_date,exit_price
 COLO,long,2026-08-31,48.209999084472656,,auto: ADD LONG,open,,
 PSCH,long,2026-08-31,54.61000061035156,,auto: ADD LONG,closed,2026-09-01,54.4900016784668
 BAC,long,2026-09-01,62.720001220703125,,auto: ADD LONG (intraday),open,,
-PSCC,long,2026-09-01,37.290000915527344,,auto: ADD LONG (intraday),open,,
-JPM,long,2026-09-01,358.7650146484375,,auto: ADD LONG (intraday),open,,
+PSCC,long,2026-09-01,37.290000915527344,,auto: ADD LONG (intraday),closed,2026-09-01,37.26359939575195
+JPM,long,2026-09-01,358.7650146484375,,auto: ADD LONG (intraday),closed,2026-09-01,355.7200012207031
 IHF,long,2026-09-01,57.810001373291016,,auto: ADD LONG (intraday),open,,
+EWG,long,2026-09-01,43.61000061035156,,auto: ADD LONG,open,,
