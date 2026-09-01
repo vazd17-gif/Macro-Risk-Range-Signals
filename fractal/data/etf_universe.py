@@ -55,7 +55,7 @@ VIX, VXN, MOVE
 # direction but never a buy or sell instruction.
 MACRO = """
 SPX, COMPQ, RUT, NIKK, DAX, SSEC, KOSPI,
-UST2Y, UST10Y, UST30Y,
+UST2Y, UST10Y, UST30Y, EU2Y, EU10Y,
 USD, WTIC, NATGAS, TTF, GOLD, COPPER, SILVER
 """
 
@@ -66,6 +66,8 @@ YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
           # Yahoo quotes these as the yield itself, not a price, so the "range"
           # around them is a range in basis points rather than in dollars.
           "UST2Y": "^FVX", "UST10Y": "^TNX", "UST30Y": "^TYX",
+          # European yields come from the ECB, not the price feed.
+          "EU2Y": "EU2Y", "EU10Y": "EU10Y",
           "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F", "TTF": "TTF=F",
           "GOLD": "GC=F", "COPPER": "HG=F", "SILVER": "SI=F"}
 
@@ -74,7 +76,9 @@ MACRO_NAMES = {
     "NIKK": "Nikkei 225", "DAX": "German DAX", "SSEC": "Shanghai Composite",
     "KOSPI": "KOSPI (South Korea)",
     "UST2Y": "5-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
-    "UST30Y": "30-Year US Treasury Yield", "USD": "US Dollar Index",
+    "UST30Y": "30-Year US Treasury Yield",
+    "EU2Y": "Euro Area AAA 2-Year Yield", "EU10Y": "Euro Area AAA 10-Year Yield",
+    "USD": "US Dollar Index",
     "WTIC": "WTI Crude Oil", "NATGAS": "US Natural Gas (Henry Hub)",
     "TTF": "European Natural Gas (Dutch TTF)", "GOLD": "Gold Spot",
     "COPPER": "Copper Spot", "SILVER": "Silver Spot"}
