@@ -27,9 +27,12 @@ fractal/out/.locked
 # charts are their product. They stay on disk so the fits can be re-run locally,
 # but they are not redistributed.
 *.pdf
-fractal/reference/charts/
-fractal/reference/hedgeye_*.csv
-fractal/reference/hedgeye_etfpro_changes.csv
+# Everything under reference/ is subscriber research and stays out of the repo.
+# This was three per-file patterns keyed to "hedgeye_*", and the first reference
+# file that did not happen to start with that prefix -- macroshow_positions.csv --
+# was staged for commit into a PUBLIC repo before anyone noticed. A directory rule
+# cannot be slipped past by a filename.
+fractal/reference/
 # The dashboard is published as docs/index.html; the copy under out/ is a build
 # artefact and would otherwise be committed twice with identical content.
 fractal/out/*.html
