@@ -111,6 +111,34 @@ EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 # the reason for holding them has not been contradicted -- only muddied.
 NEUTRAL_BAND = 0.015
 
+# That band is in percent, which makes it a different rule for every name. Across
+# 196 names sigma runs 0.08% to 8.84%, so a flat 1.5% is 19.7 sigma for TBIL and
+# 0.17 sigma for MOVE: the first is neutral forever, the second never is. Scored
+# against Hedgeye's own 281 labelled rows, expressing the band in sigma lifts the
+# separation of their neutral calls from their directional ones from AUC 0.780 to
+# 0.902 (bootstrap gain +0.121, 95% CI [+0.077, +0.169], favourable in 100% of
+# resamples) and, at a matched 14/19 hit rate, cuts false neutrals from 72 to 27 --
+# we were muting a quarter of the names on which they held a view.
+#
+# The floor and cap are deliberately NOT fitted. That label set is all macro ETFs,
+# so it contains no cash-like instruments and cannot see the failure they cause:
+# unbounded, 0.50 sigma gives TBIL a 0.04% band and it would flip direction on
+# rounding. The floor keeps cash-like names quiet, the cap stops a blown-out name
+# going permanently neutral. Chosen on that reasoning, not on the metric.
+NEUTRAL_K = 0.50
+NEUTRAL_FLOOR = 0.005
+NEUTRAL_CAP = 0.025
+NEUTRAL_SIGMA_SCALED = False
+
+
+def neutral_band_for(sigma):
+    """Half-width of the no-conviction band around TREND, in return units."""
+    if not NEUTRAL_SIGMA_SCALED:
+        return NEUTRAL_BAND
+    if sigma is None or not np.isfinite(sigma) or sigma <= 0:
+        return NEUTRAL_BAND        # no usable vol -> fall back to the flat band
+    return float(np.clip(NEUTRAL_K * sigma, NEUTRAL_FLOOR, NEUTRAL_CAP))
+
 
 EDGE_BREAK = 0.05
 
@@ -129,6 +157,55 @@ BREAKS_ENABLED = False
 def break_flags(pos, edge_break=EDGE_BREAK):
     """(break_low, break_high) -- price at the extreme, for the volume rules."""
     return pos <= edge_break, pos >= 1 - edge_break
+
+
+# The VIX is an equity-index gauge, and until now it set the band for every name in
+# the book. Measured against each name's OWN realised sigma over 3 years, it is a
+# poor proxy for anything that is not equity:
+#
+#     GLD 0.35   SLV 0.24   CPER 0.32   PPLT 0.12   UNG 0.08   UUP 0.01   TLT -0.04
+#
+# GVZ (gold vol) and OVX (crude vol) track their own asset classes far better --
+# GLD 0.35 -> 0.89, PPLT 0.12 -> 0.76, USO 0.34 -> 0.87. So metals read off GVZ and
+# crude reads off OVX.
+#
+# The energy EQUITIES stay on the VIX deliberately. XLE, OIH and XOP correlate 0.62,
+# 0.62 and 0.66 with the VIX but only 0.31, 0.14 and 0.37 with OVX: they are equities
+# in an energy wrapper, and their vol is the stock market's, not crude's.
+GAUGE_METALS = ("GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "DUST",
+                "PALL", "PPLT", "CPER", "COPX", "ICOP", "HL", "SBSW",
+                "GOLD", "SILVER", "COPPER")
+GAUGE_CRUDE = ("USO", "BNO", "UGA", "WTIC")
+
+
+def gauge_for(ticker):
+    """Which volatility index sets the band for this name."""
+    if ticker in GAUGE_METALS:
+        return "GVZ"
+    if ticker in GAUGE_CRUDE:
+        return "OVX"
+    return "VIX"
+
+
+# Thresholds are the SAME regime, not the same number: VIX 19 and 29 sit at the
+# 59th and 94th percentile of its own 5-year history, and these are the levels at
+# those percentiles for each gauge. Reusing 19/29 on OVX -- which trades in the 40s
+# -- would have called every day stressed.
+EDGE_BY_GAUGE = {
+    "VIX": EDGE_BY_VIX,
+    "GVZ": ((18.0, 0.15, 0.25), (28.0, 0.10, 0.30), (None, 0.10, 0.40)),
+    "OVX": ((41.5, 0.15, 0.25), (65.5, 0.10, 0.30), (None, 0.10, 0.40)),
+}
+
+
+def edge_for_gauge(level, gauge="VIX"):
+    """(buy band, sell band) for a level of `gauge`, or None if unreadable."""
+    if level is None or level != level:
+        return None
+    for ceiling, buy, sell in EDGE_BY_GAUGE.get(gauge, EDGE_BY_VIX):
+        if ceiling is None or level < ceiling:
+            return buy, sell
+    return None
 
 
 def edge_for_vix(level):
@@ -246,8 +323,10 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     # Sitting on the line is its own state. None here reads as "no conviction" all
     # the way down the ladder: `trend_bull` is falsy so nothing opens long, and
     # `trend_bull is False` is untrue so nothing opens short.
+    sigma = float(rng["sigma"].iloc[-1]) if "sigma" in rng else float("nan")
+    nband = neutral_band_for(sigma)
     trend_neutral = bool(
-        np.isfinite(trend) and trend and abs(spot / trend - 1.0) <= NEUTRAL_BAND)
+        np.isfinite(trend) and trend and abs(spot / trend - 1.0) <= nband)
     if trend_neutral:
         trend_bull = None
 
@@ -784,15 +863,25 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     # the VIX is missing from this run -- a scan of three ETFs should not silently
     # change its own definition of "at the end" because it happened to omit it.
     scaled = None
+    gauge_edges = {}
     if edge is None:
-        vix = prices.get(yf_symbol("VIX"))
-        if vix is not None and "Close" in vix and len(vix["Close"].dropna()):
-            scaled = edge_for_vix(float(vix["Close"].dropna().iloc[-1]))
+        for g in ("VIX", "GVZ", "OVX"):
+            gx = prices.get(yf_symbol(g))
+            if gx is not None and "Close" in gx and len(gx["Close"].dropna()):
+                e = edge_for_gauge(float(gx["Close"].dropna().iloc[-1]), g)
+                if e is not None:
+                    gauge_edges[g] = e
+        scaled = gauge_edges.get("VIX")
         edge = scaled if scaled is not None else (EDGE_BUY, EDGE_SELL)
         if verbose:
             print("range edge: buy %.0f%% / sell %.0f%%%s"
                   % (100 * edge[0], 100 * edge[1],
                      "" if scaled is not None else "  (VIX unavailable)"))
+            for g in ("GVZ", "OVX"):
+                if g in gauge_edges:
+                    print("            %s buy %.0f%% / sell %.0f%%  (%s)"
+                          % (g, 100 * gauge_edges[g][0], 100 * gauge_edges[g][1],
+                             "metals" if g == "GVZ" else "crude"))
 
     elif not isinstance(edge, (tuple, list)):
         edge = (float(edge), float(edge))     # a single number pins both sides
@@ -804,7 +893,8 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         if df is None or len(df) < 80:
             missing.append(t)
             continue
-        r = evaluate(t, df, params, edge_buy=edge_buy, edge_sell=edge_sell,
+        eb, es = gauge_edges.get(gauge_for(t), (edge_buy, edge_sell))
+        r = evaluate(t, df, params, edge_buy=eb, edge_sell=es,
                      edge_break=edge_break, fresh_days=fresh_days,
                      min_range_pct=min_range_pct)
         if r is None:

@@ -45,7 +45,7 @@ AMAT, SNDK, SBSW, SNOW, HL, BURL, TER, DAL, APP, LFST, CRWD, NYT, KR, JPM, LULU
 # are carried for market context. Bearish TRADE and TREND on both is falling
 # volatility, which is supportive for risk assets.
 INDICES = """
-VIX, VXN, MOVE
+VIX, VXN, MOVE, GVZ, OVX
 """
 
 # Macro reference: the indices, yields, currencies and spot commodities Hedgeye
@@ -61,6 +61,7 @@ USD, WTIC, NATGAS, TTF, GOLD, COPPER, SILVER
 
 # Display ticker -> data-feed symbol, where they differ.
 YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
+          "GVZ": "^GVZ", "OVX": "^OVX",
           "SPX": "^GSPC", "COMPQ": "^IXIC", "RUT": "^RUT", "NIKK": "^N225",
           "DAX": "^GDAXI", "SSEC": "000001.SS", "KOSPI": "^KS11",
           # Yahoo quotes these as the yield itself, not a price, so the "range"
@@ -123,7 +124,7 @@ GROUPS = {
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
     "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT"],
-    "volatility":   ["VIX", "VXN", "MOVE"],
+    "volatility":   ["VIX", "VXN", "MOVE", "GVZ", "OVX"],
     "macro":        _parse(MACRO),
     # Derived from the STOCKS block above rather than restated. It was a second copy
     # of the same list, so every single name added to the watchlist landed in "other"
