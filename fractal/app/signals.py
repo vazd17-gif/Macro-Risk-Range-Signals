@@ -128,7 +128,29 @@ NEUTRAL_BAND = 0.015
 NEUTRAL_K = 0.50
 NEUTRAL_FLOOR = 0.005
 NEUTRAL_CAP = 0.025
-NEUTRAL_SIGMA_SCALED = False
+NEUTRAL_SIGMA_SCALED = False        # OFF -- see the backtest below before flipping
+# TESTED AND REJECTED (12 months, 262 sessions, 209 names). The classification win
+# above is real and it did NOT translate into a trading win:
+#
+#     variant        total%   vol%  sharpe  maxDD%   exits
+#     flat 1.5%      +78.98  26.95    2.22  -10.11   13570
+#     sigma-scaled   +62.66  21.85    2.26   -8.75   14230
+#
+# Churn went the WRONG WAY -- REMOVE LONG 2036 -> 3061 and COVER SHORT 1570 -> 2420,
+# up 50% and 54%. Tightening the band on high-vol names lets more names take a side,
+# which lets more TREND events through, which is the exact churn the band was added
+# to stop. Return fell 16.3pp and the Sharpe gain of +0.04 is noise bought by
+# de-risking, not by picking better.
+#
+# The lesson worth keeping: AUC 0.902 measures how well we LABEL a name as sitting
+# on its line. It says nothing about whether acting on that label makes money. The
+# band is doing two jobs at once -- gating entries and suppressing exits -- and only
+# the first is a classification problem. A split band (sigma-scaled for entry, wide
+# and flat for exit suppression) is the untested idea that follows from this.
+#
+# Caveat on the return column: SPY was up ~19% over this window, so "fewer exits
+# earns more" partly reflects a bull market. Sharpe is the fairer read, and it is
+# a wash.
 
 
 def neutral_band_for(sigma):
