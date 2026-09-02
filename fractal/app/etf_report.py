@@ -125,6 +125,34 @@ def _provisional(r, live):
     return not (x and x == x and str(x).strip())
 
 
+def _track(r, pos):
+    """The range as a rule, with spot, TRADE and TREND marked on it.
+
+    Five numbers in one widget. A duration line can sit outside the range -- TREND
+    is a 64-day average and the range is a few days wide -- so a line beyond either
+    edge is pinned to it and dimmed, which reads as "off the scale that way" rather
+    than being silently dropped or stretching the rule to fit.
+    """
+    def at(v):
+        lo, hi = r.range_low, r.range_high
+        if not (np.isfinite(v) and np.isfinite(lo) and np.isfinite(hi)) or hi <= lo:
+            return None, False
+        f = (v - lo) / (hi - lo)
+        return float(np.clip(f, 0.0, 1.0)) * 100.0, (0.0 <= f <= 1.0)
+
+    parts = ['<div class="track"><div class="rail"></div>']
+    for lvl, bull in ((r.trade, r.trade_bull), (r.trend, r.trend_bull)):
+        x, inside = at(lvl)
+        if x is None:
+            continue
+        col = BULL if bull is True else BEAR if bull is False else FLAT
+        parts.append('<i class="tick" style="left:%.1f%%;background:%s;opacity:%s"></i>'
+                     % (x, col, ".95" if inside else ".45"))
+    parts.append('<i class="spot" style="left:%.1f%%"></i>' % (pos * 100))
+    parts.append('</div>')
+    return "".join(parts)
+
+
 def _trend_col(trend_bull):
     """Ticker colour: green above TREND, red below, grey neutral or unknown.
 
@@ -398,63 +426,130 @@ def _bull_cell(level, bull):
 
 # ------------------------------------------------------------------ dashboard
 CSS = """
-:root{--bg:#0d0f13;--panel:#151920;--line:#242a34;--fg:#e6e9ef;--dim:#8b94a5;
---bull:#0ea37f;--bear:#ef5350;--warn:#d9a441;--info:#5c9ded}
+/* The model is one idea: where price sits between two bounds, judged by two
+   durations. So the range track is the identity of the page, not a column in it --
+   every row resolves five numbers (low, high, spot, TRADE, TREND) on one rule.
+   Committed to dark: this is a terminal read at 6am and again at 9pm, and a light
+   variant would be a second design carrying no extra meaning. */
+:root{
+  --bg:#0a0d12; --panel:#111620; --panel-2:#161c28; --line:#1f2836; --line-2:#2b3648;
+  --fg:#e8ecf4; --dim:#7d8798; --dimmer:#5a6474;
+  --bull:#25b088; --bear:#f0554f; --warn:#e0a63f; --info:#5c9ded; --flat:#6b7688;
+}
 *{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);
-font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
-.wrap{max-width:1600px;margin:0 auto;padding:26px 20px 64px}
-h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
-.sub{color:var(--dim);font-size:13px;margin-bottom:20px}
-.cards{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-padding:10px 15px;min-width:132px;border-left:3px solid var(--line)}
-.card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
-.card .v{font-size:20px;font-weight:650;margin-top:2px}
-.filters{display:flex;flex-direction:column;gap:9px;margin-bottom:16px}
-.frow{display:grid;grid-template-columns:66px 1fr;gap:9px;align-items:start}
-.flab{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
-padding-top:7px}
-.fbtns{display:flex;flex-wrap:wrap;gap:8px}
-@media(max-width:640px){.frow{grid-template-columns:1fr;gap:4px}.flab{padding-top:0}}
-button{background:var(--panel);color:var(--fg);border:1px solid var(--line);
-border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer}
-button:hover{border-color:#39414f}
-button[aria-pressed="true"]{background:#1d2530;border-color:#3d4a5c;color:#fff}
-.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-table{border-collapse:collapse;width:100%;min-width:1180px}
-th,td{padding:7px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
-th{position:sticky;top:0;background:#11151b;color:var(--dim);font-weight:600;font-size:11px;
-text-transform:uppercase;letter-spacing:.05em;cursor:pointer;z-index:1}
-th:first-child,td:first-child,td.l{text-align:left}
-tbody tr:hover{background:#1a1f27}
-.tk{font-weight:650}.grp{color:var(--dim);font-size:11px}
-.bar{position:relative;width:132px;height:8px;border-radius:4px;background:#1e242e;display:inline-block;vertical-align:middle}
-.bar u{position:absolute;inset:0;border-radius:4px;
-background:linear-gradient(90deg,rgba(14,163,127,.30),rgba(90,100,120,.12),rgba(239,83,80,.30))}
-.bar i{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;background:#fff}
-.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;
-letter-spacing:.02em;white-space:nowrap}
-.why{color:var(--dim);font-size:11.5px}
-footer{color:var(--dim);font-size:12px;margin-top:20px;line-height:1.7}
-code{background:#11151b;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  font:14px/1.55 "IBM Plex Sans",ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.num{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-variant-numeric:tabular-nums}
+.wrap{max-width:1680px;margin:0 auto;padding:0 22px 72px}
+.mast{padding:30px 0 22px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.brand{font-family:"Instrument Serif",Georgia,serif;font-size:34px;line-height:1;
+  letter-spacing:-.01em;margin:0;font-weight:400}
+.session{margin-top:11px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline}
+.session .day{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.session .meta{color:var(--dim);font-size:12.5px}
+.live{display:inline-flex;align-items:center;gap:6px;color:var(--bull);font-size:12.5px}
+.live b{width:6px;height:6px;border-radius:50%;background:var(--bull);
+  box-shadow:0 0 0 3px rgba(37,176,136,.16)}
+/* Flex rather than grid: an auto-fit grid leaves a dead cell whenever the count
+   does not divide by the column count, and the scoreboard changes length daily. */
+.regime{display:flex;flex-wrap:wrap;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px}
+.reg{background:var(--panel);padding:12px 15px;flex:1 1 118px;min-width:118px}
+.reg .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.09em;
+  font-weight:600}
+.reg .v{font-size:22px;font-weight:600;margin-top:3px;letter-spacing:-.02em;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.alerts{border:1px solid var(--line-2);
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));border-radius:12px;
+  padding:14px 16px;margin-bottom:20px}
+.alerts .hd{font-size:10px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--dim);font-weight:600;margin-bottom:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;text-decoration:none;
+  background:var(--panel);border:1px solid var(--line-2);border-radius:9px;
+  padding:7px 11px;color:var(--fg);transition:border-color .12s,transform .12s}
+.chip:hover{border-color:#3d4a5c;transform:translateY(-1px)}
+.chip b{font-weight:650;font-size:13px}
+.chip .lab{font-size:11.5px}
+.chip .px{color:var(--dim);font-size:11.5px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);
+  font-weight:600;margin:26px 0 11px}
+h2 span{text-transform:none;letter-spacing:0;font-weight:400;color:var(--dimmer)}
+.filters{display:flex;flex-direction:column;gap:8px;margin:6px 0 14px}
+.frow{display:grid;grid-template-columns:74px 1fr;gap:10px;align-items:start}
+.flab{color:var(--dimmer);font-size:10px;text-transform:uppercase;letter-spacing:.09em;
+  padding-top:8px;font-weight:600}
+.fbtns{display:flex;flex-wrap:wrap;gap:7px}
+button{background:transparent;color:var(--dim);border:1px solid var(--line-2);
+  border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:500;
+  font-family:inherit;transition:border-color .12s,color .12s,background .12s}
+button:hover{border-color:#3d4a5c;color:var(--fg)}
+button[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg);
+  font-weight:600}
+button:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;
+  background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:1240px}
+th,td{padding:9px 11px;text-align:right;white-space:nowrap;
+  border-bottom:1px solid var(--line)}
+th{position:sticky;top:0;background:#0d1219;color:var(--dimmer);font-weight:600;
+  font-size:10px;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;z-index:2;
+  border-bottom:1px solid var(--line-2)}
+th:hover{color:var(--fg)}
+th:first-child,td:first-child,td.l,th.l{text-align:left}
+tbody tr{transition:background .1s}
+tbody tr:hover{background:var(--panel-2)}
+tbody tr:last-child td{border-bottom:none}
+.tk{font-weight:650;font-size:13.5px;letter-spacing:-.01em}
+.grp{color:var(--dimmer);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+.track{position:relative;width:184px;height:22px;display:inline-block;
+  vertical-align:middle}
+/* The rail is a real object, not a hairline: a recessed groove with the buy zone
+   tinted at the low end and the short zone at the high end, so the ends of the
+   range -- where the model acts -- carry the colour and the middle stays quiet. */
+.track .rail{position:absolute;top:8px;left:0;right:0;height:6px;border-radius:3px;
+  background:#232c3a;box-shadow:inset 0 1px 1px rgba(0,0,0,.45)}
+.track .rail::before,.track .rail::after{content:"";position:absolute;top:0;bottom:0;
+  width:16%;border-radius:3px}
+.track .rail::before{left:0;
+  background:linear-gradient(90deg,rgba(37,176,136,.85),rgba(37,176,136,0))}
+.track .rail::after{right:0;
+  background:linear-gradient(270deg,rgba(240,85,79,.85),rgba(240,85,79,0))}
+.track .tick{position:absolute;top:15px;width:2px;height:8px;border-radius:1px;
+  box-shadow:0 0 0 1px rgba(10,13,18,.7)}
+/* Spot is the one thing you look for: a bright pin standing above the rail. */
+.track .spot{position:absolute;top:2px;width:3px;height:18px;border-radius:2px;
+  background:var(--fg);box-shadow:0 0 0 2px var(--panel),0 0 10px rgba(232,236,244,.45)}
 
-/* On a phone the table cannot carry thirteen columns, so the reference detail
-   (range edges, distances, line levels, volume) is dropped and only what you act
-   on survives: the name, spot, where it sits in the range, and the signal. */
+.pill{display:inline-block;padding:3px 10px;border-radius:7px;font-size:11px;
+  font-weight:650;letter-spacing:.02em;white-space:nowrap}
+.why{color:var(--dim);font-size:11.5px;font-weight:400}
+footer{color:var(--dimmer);font-size:12px;margin-top:26px;line-height:1.75;
+  border-top:1px solid var(--line);padding-top:18px;max-width:78ch}
+footer b{color:var(--dim);font-weight:600}
+code{background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
+  padding:1px 6px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px}
 @media (max-width: 820px){
-  .wrap{padding:18px 12px 48px}
-  h1{font-size:19px}
+  .wrap{padding:0 13px 52px}
+  .mast{padding:22px 0 16px}
+  .brand{font-size:27px}
   table{min-width:0}
   th.opt,td.opt{display:none}
-  th,td{padding:7px 8px}
-  .bar{width:76px}
-  .card{min-width:0;flex:1 1 42%;padding:9px 12px}
-  .card .v{font-size:18px}
+  th,td{padding:8px 8px}
+  .track{width:112px}
   .grp{display:none}
-  input[type=search]{flex:1 1 100%}
+  .reg .v{font-size:19px}
 }
+@media (prefers-reduced-motion: reduce){*{transition:none !important}}
 """
+
+
+
+
 
 JS = """
 // Scoped to the scan table by id. Unscoped, the portfolio is a table too -- and in
@@ -524,7 +619,7 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             '<td class="l"><span class="tk" style="color:%s">%s</span> <span class="grp">%s</span></td>'
             '<td data-v="%s">%s</td>'
             '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
-            '<td data-v="%.4f"><div class="bar"><u></u><i style="left:%.1f%%"></i></div></td>'
+            '<td data-v="%.4f">%s</td>'
             '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
             '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
             '<td class="opt" data-v="%s">%s</td><td class="opt" data-v="%s">%s</td>'
@@ -534,7 +629,7 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
                _trend_col(r.trend_bull),
                r.ticker, GROUP_LABEL.get(r.group, r.group),
                r.spot, _f(r.spot), r.range_low, _f(r.range_low), r.range_high, _f(r.range_high),
-               pos, pos * 100,
+               pos, _track(r, pos),
                r.pct_to_low, _f(r.pct_to_low), r.pct_to_high, _f(r.pct_to_high),
                r.trade, _bull_cell(r.trade, r.trade_bull),
                r.trend, _bull_cell(r.trend, r.trend_bull),
@@ -543,9 +638,12 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
                r.vol_z_3m, _z_cell(r.vol_z_3m),
                pill, html.escape(r.why or "")))
 
-    cards = [("Names", len(df), "var(--line)")]
+    cards = [("Names", len(df), "var(--dim)")]
+    # Only headings with something in them. A scoreboard reading WATCHLIST 0 next to
+    # a section that is not on the page is the same dead end the filter buttons were.
     for name in SIGNAL_ORDER:
-        cards.append((name, counts.get(name, 0), SIG_STYLE[name][0]))
+        if counts.get(name, 0):
+            cards.append((name, counts[name], SIG_STYLE[name][0]))
     # Neutral earns a card of its own: it is the reason a chunk of the list is
     # silent, and without it the silence looks like nothing happening.
     if "trend_neutral" in df and int(df["trend_neutral"].sum()):
@@ -608,13 +706,9 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             bits.append("%d crossed a line" % n_cross)
         if n_edge:
             bits.append("%d at a range edge" % n_edge)
-        alerts_html = (
-            '<div style="border:1px solid #3d4a5c;background:#141a22;border-radius:10px;'
-            'padding:13px 15px;margin-bottom:20px">'
-            '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;'
-            'color:var(--dim);margin-bottom:9px">Alert &middot; %s</div>'
-            '<div style="display:flex;flex-wrap:wrap;gap:8px">%s</div></div>'
-            % (" &middot; ".join(bits), chips))
+        alerts_html = ('<div class="alerts"><div class="hd">Happening now '
+                       '&middot; %s</div><div class="chips">%s</div></div>'
+                       % (" &middot; ".join(bits), chips))
 
     idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
     vol_html = ""
@@ -727,14 +821,22 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     return """<title>Macro Risk Range Signals</title>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
 """ + PWA_HEAD + """
 %s
 <style>%s</style>
 <div class="wrap">
-<h1>Macro Risk Range Signals</h1>
-<div class="sub">%s &middot; %s &middot; levels for this session, computed from the %s close
-&middot; %s</div>
-<div class="cards">%s</div>
+<header class="mast">
+<h1 class="brand">Macro Risk Range Signals</h1>
+<div class="session"><span class="day">%s</span>
+<span class="meta">%s</span>
+<span class="meta">levels from the <span class="num">%s</span> close</span>
+<span class="meta">%s</span></div>
+</header>
+<div class="regime">%s</div>
 %s
 %s
 %s
@@ -753,14 +855,14 @@ chip is a name at the bottom of its range that is below TREND &mdash; the one ca
 handbook says not to buy. VIX and MOVE are the exception: they carry no position, so
 they are coloured by what they mean for everything else &mdash; green when volatility
 is falling, red when it is rising.
-&ldquo;In range&rdquo; shows where spot sits between the low and high edge; the outer fifth at each end counts as &ldquo;at the end&rdquo;.
+<b>The track</b> is the range drawn as a rule: the low edge on the left, the high on the right, tinted green where the model buys and red where it shorts. The bright pin is spot. The two small stems below it are TRADE and TREND, coloured by which side price is on &mdash; a stem pinned to either end and dimmed means that line sits outside the range entirely, which TREND often does. The bands themselves move with the VIX rather than being a fixed fraction.
 Volume is shown as a z-score of log volume against the fund's own 1-month and
 3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue
 an unusually light one (z &le; &minus;2).
 </footer></div>
 <script>%s</script>
 """ % (refresh, CSS, _session_label(asof), _universe_label(df), asof, stamp,
-       "".join('<div class="card" style="border-left-color:%s"><div class="k">%s</div>'
+       "".join('<div class="reg"><div class="k" style="color:%s">%s</div>'
                '<div class="v">%s</div></div>' % (c, k, v) for k, v, c in cards),
        alerts_html,
        pf_html,
