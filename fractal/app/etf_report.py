@@ -567,8 +567,14 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             lost = h.intraday.startswith("lost")
             alerts.append((0, h.ticker, "#ef5350" if lost else "#5c9ded",
                            h.intraday, _f(h.spot), _trend_col(h.trend_bull)))
+    # Range-edge chips only on a live build. An alert is something that HAPPENED --
+    # a line cleared during the session. Where price sits in the range is a state,
+    # it is recomputed from every fresh set of levels, and on a close build it is
+    # already the BUY and TRIM sections underneath. Carrying 45 of them into a
+    # settled dashboard made a strip of standing conditions look like a morning's
+    # worth of events that had failed to clear.
     seen = {a[1] for a in alerts}
-    for h in df.itertuples():
+    for h in (df.itertuples() if live_at else ()):
         if h.ticker in seen or getattr(h, "cash_like", False):
             continue
         if getattr(h, "is_index", False):
