@@ -1281,7 +1281,10 @@ def main(argv=None):
     # the session; both must read the previous close, which is what fixes the levels.
     df = S.run(tickers, params=params, profile=args.profile,
                edge=args.edge, fresh_days=args.fresh_days,
-               include_today=args.settle)
+               include_today=args.settle,
+               # A settle exists to capture the CLOSE, so it must not be served
+               # the noon fetch from a 12-hour cache. See signals.run.
+               max_age_hours=0 if args.settle else None)
     if df.empty:
         print("no data")
         return 1

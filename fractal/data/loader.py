@@ -28,7 +28,7 @@ def repo_path(*parts) -> str:
 
 
 def load_prices(tickers, params: dict | None = None, source: str | None = None,
-                verbose: bool = True) -> dict:
+                verbose: bool = True, max_age_hours: float | None = None) -> dict:
     """{ticker: OHLCV DataFrame}. Falls back to Yahoo if IB is unreachable."""
     params = params or load_params()
     cfg = params.get("data", {})
@@ -48,7 +48,8 @@ def load_prices(tickers, params: dict | None = None, source: str | None = None,
     # 2-year, so UST2Y is served from FRED DGS2 -- see fred_client for why.
     fred = [t for t in tickers if fred_client.is_fred(t)]
     rest = [t for t in tickers if not fred_client.is_fred(t)]
-    out = yahoo_client.fetch(rest, years=years, cache_dir=cache_dir) if rest else {}
+    kw = {} if max_age_hours is None else {"max_age_hours": max_age_hours}
+    out = yahoo_client.fetch(rest, years=years, cache_dir=cache_dir, **kw) if rest else {}
     if fred:
         out.update(fred_client.fetch(fred, years=years, cache_dir=cache_dir,
                                      verbose=verbose))

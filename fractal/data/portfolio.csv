@@ -17,4 +17,4 @@ CRWD,long,2026-09-03,208.4750061035156,,auto: ADD LONG (intraday),open,,
 RSP,long,2026-09-03,219.81500244140625,,auto: ADD LONG (intraday),open,,
 PSP,long,2026-09-03,63.0099983215332,,auto: ADD LONG (intraday),open,,
 JPM,long,2026-09-03,358.2799987792969,,auto: ADD LONG (intraday),open,,
-SNOW,long,2026-09-03,371.8046875,,auto: ADD LONG (intraday),open,,
+SNOW,long,2026-09-03,371.8046875,,auto: ADD LONG (intraday),closed,2026-09-03,356.4700012207031

@@ -875,7 +875,7 @@ def mark_new(df, state=None):
 
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT,
-        include_today=False, verbose=True):
+        include_today=False, verbose=True, max_age_hours=None):
     """Evaluate the ETF watchlist. Returns a DataFrame, most actionable first.
 
     `edge` defaults to the VIX-scaled band: one band governs the whole list, because
@@ -890,7 +890,11 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     # VIX and MOVE are published under ^-prefixed symbols; everything else is its
     # own ticker. Fetch by feed symbol, report by display ticker.
     feed = {t: yf_symbol(t) for t in tickers}
-    prices = load_prices(sorted(set(feed.values())), params=params, verbose=verbose)
+    # The Yahoo cache holds 12 hours, so a 21:20 settle would otherwise reuse the
+    # noon fetch and rebuild the whole book off the PREVIOUS close -- which is
+    # exactly what happened on 3 Sep 2026. The settle passes max_age_hours=0.
+    prices = load_prices(sorted(set(feed.values())), params=params, verbose=verbose,
+                         max_age_hours=max_age_hours)
 
     # One session for the whole list, and it is the one MOST of the list agrees on --
     # not the newest bar anywhere in it. The VIX and other early-printing instruments

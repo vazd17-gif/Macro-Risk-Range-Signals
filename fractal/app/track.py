@@ -106,7 +106,13 @@ def bars_ready(session, book_csv=None, params=None):
     if live.empty:
         return True, 0, 0            # nothing held is a legitimate flat day
     tickers = sorted(live["ticker"].unique())
-    bars = _bars(tickers, params)
+    # Force a live fetch. The Yahoo cache holds for 12 hours, so the noon run's
+    # file is still "fresh" at 21:20 and this check would sit re-reading a copy
+    # that ends at the PREVIOUS close -- reporting "not published" long after the
+    # bars were up. That is what happened on 3 Sep 2026.
+    bars = {t: d for t, d in zip(
+        tickers, [load_prices([yf_symbol(t)], params=params, verbose=False,
+                              max_age_hours=0).get(yf_symbol(t)) for t in tickers])}
     day = pd.Timestamp(session)
     have = sum(1 for t in tickers
                if bars.get(t) is not None and day in bars[t].index)
