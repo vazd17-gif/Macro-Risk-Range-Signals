@@ -111,6 +111,12 @@ EDGE_BUY, EDGE_SELL = 0.20, 0.20      # used only when the VIX is unreadable
 # the reason for holding them has not been contradicted -- only muddied.
 NEUTRAL_BAND = 0.015
 
+# Frozen-feed detector: how many sessions to look at, and how many of them may be
+# unchanged before the feed is called dead. A third of a quarter's sessions printing
+# no change at all is not a quiet instrument, it is a broken quote.
+FROZEN_WINDOW = 60
+FROZEN_MIN_FLAT = 20
+
 # That band is in percent, which makes it a different rule for every name. Across
 # 196 names sigma runs 0.08% to 8.84%, so a flat 1.5% is 19.7 sigma for TBIL and
 # 0.17 sigma for MOVE: the first is neutral forever, the second never is. Scored
@@ -213,7 +219,17 @@ GAUGE_CRUDE = ("USO", "BNO", "UGA", "WTIC")
 GAUGE_RATES = ("TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "IVOL",
                "BUXX", "CLOX", "CLOZ", "IIGD", "MTBA", "TBIL", "HBDC",
                "UST2Y", "UST10Y", "UST30Y")
-GAUGE_FX = ("UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "USD")
+# FX has NO live gauge and reads off the VIX by default. EVZ (CBOE EuroCurrency
+# Volatility) fitted well -- FXE 0.37 -> 0.66, FXB 0.35 -> 0.65 -- and was wired in
+# on 3 Sep 2026 before anyone checked its last print. CBOE DISCONTINUED it: both
+# Yahoo's ^EVZ and FRED's EVZCLS stop in March 2025, so the "fit" was measured on a
+# series that had been dead for eighteen months, and the FX sleeve briefly sized its
+# bands off a stale 2025 vol level. The frozen-feed detector in run() exists because
+# of this and the 2YY=F failure the same day.
+#
+# Untested alternative if this is worth revisiting: realised EWMA vol of the dollar
+# index as the sleeve gauge. Non-circular for the crosses, mildly circular for UUP.
+GAUGE_FX = ()
 
 
 def gauge_for(ticker):
@@ -224,8 +240,6 @@ def gauge_for(ticker):
         return "OVX"
     if ticker in GAUGE_RATES:
         return "MOVE"
-    if ticker in GAUGE_FX:
-        return "EVZ"
     return "VIX"
 
 
@@ -238,7 +252,6 @@ EDGE_BY_GAUGE = {
     "GVZ": ((18.0, 0.15, 0.25), (28.0, 0.10, 0.30), (None, 0.10, 0.40)),
     "OVX": ((41.5, 0.15, 0.25), (65.5, 0.10, 0.30), (None, 0.10, 0.40)),
     "MOVE": ((107.75, 0.15, 0.25), (135.9, 0.10, 0.30), (None, 0.10, 0.40)),
-    "EVZ": ((8.10, 0.15, 0.25), (11.9, 0.10, 0.30), (None, 0.10, 0.40)),
 }
 
 
@@ -916,7 +929,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     scaled = None
     gauge_edges = {}
     if edge is None:
-        for g in ("VIX", "GVZ", "OVX", "MOVE", "EVZ"):
+        for g in ("VIX", "GVZ", "OVX", "MOVE"):
             gx = prices.get(yf_symbol(g))
             if gx is not None and "Close" in gx and len(gx["Close"].dropna()):
                 e = edge_for_gauge(float(gx["Close"].dropna().iloc[-1]), g)
@@ -928,16 +941,37 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
             print("range edge: buy %.0f%% / sell %.0f%%%s"
                   % (100 * edge[0], 100 * edge[1],
                      "" if scaled is not None else "  (VIX unavailable)"))
-            for g in ("GVZ", "OVX", "MOVE", "EVZ"):
+            for g in ("GVZ", "OVX", "MOVE"):
                 if g in gauge_edges:
                     print("            %s buy %.0f%% / sell %.0f%%  (%s)"
                           % (g, 100 * gauge_edges[g][0], 100 * gauge_edges[g][1],
                              {"GVZ": "metals", "OVX": "crude",
-                              "MOVE": "rates", "EVZ": "fx"}[g]))
+                              "MOVE": "rates"}[g]))
 
     elif not isinstance(edge, (tuple, list)):
         edge = (float(edge), float(edge))     # a single number pins both sides
     edge_buy, edge_sell = edge
+
+    # A feed can be present, recent and still dead. 2YY=F served UST2Y while printing
+    # zero change on 30 of 60 sessions and sitting at 4.1700 for nine days straight;
+    # it read 4.2000 against a true 4.3609 and understated 2s10s by 19bp for weeks.
+    # Nothing caught it, because every check we had asked whether data EXISTED, not
+    # whether it MOVED. This asks the second question.
+    if verbose:
+        frozen = []
+        for t in tickers:
+            df = prices.get(feed[t])
+            if df is None or "Close" not in df:
+                continue
+            c = df["Close"].dropna().tail(FROZEN_WINDOW)
+            if len(c) < FROZEN_WINDOW:
+                continue
+            flat = int((c.diff() == 0).sum())
+            if flat >= FROZEN_MIN_FLAT:
+                frozen.append((t, flat, len(c)))
+        if frozen:
+            print("[signals] FROZEN FEED -- unchanged on most sessions, check the "
+                  "source: " + ", ".join("%s(%d/%d)" % f for f in frozen))
 
     rows, missing = [], []
     for t in tickers:

@@ -45,7 +45,7 @@ AMAT, SNDK, SBSW, SNOW, HL, BURL, TER, DAL, APP, LFST, CRWD, NYT, KR, JPM, LULU
 # are carried for market context. Bearish TRADE and TREND on both is falling
 # volatility, which is supportive for risk assets.
 INDICES = """
-VIX, VXN, MOVE, GVZ, OVX, EVZ
+VIX, VXN, MOVE, GVZ, OVX
 """
 
 # Macro reference: the indices, yields, currencies and spot commodities Hedgeye
@@ -61,16 +61,19 @@ USD, WTIC, NATGAS, TTF, GOLD, COPPER, SILVER
 
 # Display ticker -> data-feed symbol, where they differ.
 YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
-          "GVZ": "^GVZ", "OVX": "^OVX", "EVZ": "^EVZ",
+          "GVZ": "^GVZ", "OVX": "^OVX",
           "SPX": "^GSPC", "COMPQ": "^IXIC", "RUT": "^RUT", "NIKK": "^N225",
           "DAX": "^GDAXI", "SSEC": "000001.SS", "KOSPI": "^KS11",
           # Yahoo quotes these as the yield itself, not a price, so the "range"
           # around them is a range in basis points rather than in dollars.
           # ^FVX is the FIVE-year yield, not the two -- it was mapped to UST2Y and
           # the newsletter dutifully printed "5-Year" against a row labelled 2Y.
-          # 2YY=F is the CBOT micro 2-year yield future, which is an actual 2-year
-          # yield with the history the range needs.
-          "UST2Y": "2YY=F", "UST10Y": "^TNX", "UST30Y": "^TYX",
+          # Its replacement, the CBOT micro yield future 2YY=F, fixed the tenor but
+          # is barely quoted: 30 zero-change days in 60, nine straight sessions
+          # pinned at 4.1700, and 0.110 correlation with the 5-year on daily
+          # changes. It read 4.2000 against a true 4.3609 and understated 2s10s by
+          # 19bp. UST2Y now comes from FRED DGS2, the constant-maturity series.
+          "UST2Y": "FRED:DGS2", "UST10Y": "^TNX", "UST30Y": "^TYX",
           "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F", "TTF": "TTF=F",
           "GOLD": "GC=F", "COPPER": "HG=F", "SILVER": "SI=F"}
 
@@ -124,7 +127,7 @@ GROUPS = {
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
                      "CLOZ", "IIGD", "MTBA", "TBIL", "IVOL", "HBDC"],
     "fx_crypto":    ["UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "IBIT"],
-    "volatility":   ["VIX", "VXN", "MOVE", "GVZ", "OVX", "EVZ"],
+    "volatility":   ["VIX", "VXN", "MOVE", "GVZ", "OVX"],
     "macro":        _parse(MACRO),
     # Derived from the STOCKS block above rather than restated. It was a second copy
     # of the same list, so every single name added to the watchlist landed in "other"

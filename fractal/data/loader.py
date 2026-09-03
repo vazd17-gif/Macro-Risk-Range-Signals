@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import yaml
 
+from . import fred_client
 from . import yahoo_client
 from .ib_client import IBUnavailable
 
@@ -43,7 +44,15 @@ def load_prices(tickers, params: dict | None = None, source: str | None = None,
             if verbose:
                 print(f"[loader] IB unavailable ({e}); falling back to Yahoo.")
 
-    return yahoo_client.fetch(tickers, years=years, cache_dir=cache_dir)
+    # FRED-sourced names are split out and merged back. Yahoo has no honest cash
+    # 2-year, so UST2Y is served from FRED DGS2 -- see fred_client for why.
+    fred = [t for t in tickers if fred_client.is_fred(t)]
+    rest = [t for t in tickers if not fred_client.is_fred(t)]
+    out = yahoo_client.fetch(rest, years=years, cache_dir=cache_dir) if rest else {}
+    if fred:
+        out.update(fred_client.fetch(fred, years=years, cache_dir=cache_dir,
+                                     verbose=verbose))
+    return out
 
 def next_session(asof):
     """The trading day that levels computed from the `asof` close apply to.
