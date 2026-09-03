@@ -60,29 +60,52 @@ def _new_badge(r):
             'letter-spacing:.04em"> NEW</span>')
 
 
-def _closed_block(closed, dark=True):
+def _held(book):
+    """Tickers currently on the book, for labelling same-day round trips."""
+    if book is None or not len(book) or "ticker" not in book:
+        return set()
+    return set(book["ticker"].astype(str))
+
+
+def _closed_block(closed, dark=True, held=()):
     """Positions that came off this session, with what they made.
 
     A reduction is the moment P&L stops being paper, so it is reported rather than
     the name simply dropping out of the open list. Without this a "sell some" would
     look like the position had never been held.
+
+    `held` is the set of tickers currently ON the book. A name can legitimately be
+    in both places on the same day: a TRIM closes the lot so its P&L is realised,
+    and a later pass can re-open it if the signal fires again. JPM did exactly that
+    on 3 Sep 2026 -- the 09-02 lot was closed on a TRIM LONG at 12:00 and an
+    intraday ADD LONG opened a fresh 09-03 lot. Both records are true, but printing
+    "closed" while the name sits in the open book reads as the report contradicting
+    itself, so the round trip is labelled instead of left to be inferred.
     """
     if closed is None or not len(closed):
         return ""
+    held = set(held or ())
     line, dim = ("var(--line)", "var(--dim)") if dark else ("#e6e8ec", "#8b94a5")
     rows = []
     for r in closed.itertuples():
         col = ("#0ea37f" if r.pnl_pct >= 0 else "#ef5350") if dark else (
               "#0b8f6e" if r.pnl_pct >= 0 else "#d33")
+        back = r.ticker in held
+        tag = ('<span style="color:%s;font-size:11px;font-weight:700;'
+               'border:1px solid %s;border-radius:3px;padding:1px 5px;'
+               'margin-left:6px">RE-ENTERED</span>' % ("#d9a441", "#d9a441")) if back else ""
+        note = ('<div style="color:%s;font-size:12px;margin-top:2px">'
+                'realised on the lot that came off &mdash; a new lot is open, so the '
+                'name is still on the book</div>' % dim) if back else ""
         rows.append(
             '<tr><td style="padding:7px 0;border-bottom:1px solid %s">'
-            '<span style="font-weight:700">%s</span>'
+            '<span style="font-weight:700">%s</span>%s'
             '<span style="color:%s;font-size:12px"> &nbsp;%s closed</span>'
             '<span style="float:right;color:%s;font-weight:700">%+.2f%%</span>'
             '<div style="color:%s;font-size:12.5px;margin-top:2px">'
-            '%s &rarr; %s</div></td></tr>'
-            % (line, r.ticker, dim, r.side, col, r.pnl_pct, dim,
-               _f(r.entry_price), _f(r.exit_price)))
+            '%s &rarr; %s</div>%s</td></tr>'
+            % (line, r.ticker, tag, dim, r.side, col, r.pnl_pct, dim,
+               _f(r.entry_price), _f(r.exit_price), note))
     return "".join(rows)
 
 
@@ -788,7 +811,8 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             '&middot; %d &middot; realised %+.2f%%</span></h2>'
             '<table style="margin-bottom:24px;width:100%%;max-width:640px">'
             '<tbody>%s</tbody></table>'
-            % (len(closed), closed["pnl_pct"].mean(), _closed_block(closed, dark=True)))
+            % (len(closed), closed["pnl_pct"].mean(),
+               _closed_block(closed, dark=True, held=_held(book))))
 
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
              "% to low", "% to high", "TRADE", "TREND",
@@ -1030,7 +1054,8 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
               'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
               'CLOSED TODAY &nbsp;(%d &middot; %+.2f%% average)</span></td></tr>'
               '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
-              % (len(closed), realised, _closed_block(closed, dark=False)))
+              % (len(closed), realised,
+                 _closed_block(closed, dark=False, held=_held(book))))
     pf = pf + cl
 
     # The neutral state is defined in the explainer and counted in the chip row, so
