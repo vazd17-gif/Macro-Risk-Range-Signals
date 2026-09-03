@@ -91,6 +91,28 @@ def session_return(session, book_csv=None, params=None, verbose=True):
     return float(np.mean([x[1] for x in rows])), rows
 
 
+def bars_ready(session, book_csv=None, params=None):
+    """Do we actually have the session's close for the names we hold?
+
+    The track skips any position whose session bar is missing, so a run before the
+    daily bars publish silently produces "0 positions, +0.00%" -- which is not a
+    flat day, it is no data, and on 3 Sep 2026 that went out by email as though it
+    were a real result. The settle fires 21:20 local, twenty minutes after the US
+    close, and Yahoo had not posted the 09-03 bars yet.
+    """
+    params = params or load_params()
+    pos = P.load(book_csv)
+    live = pos[pos["status"] == P.OPEN]
+    if live.empty:
+        return True, 0, 0            # nothing held is a legitimate flat day
+    tickers = sorted(live["ticker"].unique())
+    bars = _bars(tickers, params)
+    day = pd.Timestamp(session)
+    have = sum(1 for t in tickers
+               if bars.get(t) is not None and day in bars[t].index)
+    return have > 0, have, len(tickers)
+
+
 def update(session=None, book_csv=None, custom=None, params=None, verbose=True):
     """Add or replace one session in the track. Returns the whole track."""
     session = str(session or dt.date.today())
@@ -170,7 +192,20 @@ def main():
     ap = argparse.ArgumentParser(description="Update and optionally send the P&L track.")
     ap.add_argument("--session", default=None)
     ap.add_argument("--send-to", default=None, help="email the report to this address")
+    ap.add_argument("--force", action="store_true",
+                    help="send even when the session's bars have not published")
     a = ap.parse_args()
+    session = str(a.session or dt.date.today())
+    ready, have, need = bars_ready(session)
+    if not ready and not a.force:
+        print("[track] ABORTED - no %s close for any of the %d open position(s). "
+              "This is missing data, not a flat session; sending it would report "
+              "+0.00%% as though it were real. Re-run once the bars publish, or "
+              "pass --force." % (session, need))
+        return 1
+    if have < need:
+        print("[track] WARNING - only %d of %d position(s) have a %s bar; the "
+              "session return is computed on those." % (have, need, session))
     t = update(a.session)
     out = repo_path("out", "pnl_track.html")
     with io.open(out, "w", encoding="utf-8") as fh:
@@ -185,7 +220,8 @@ def main():
         # Say so. The first run printed nothing at all, which is indistinguishable
         # from having quietly failed.
         print("[track] sent to %s" % a.send_to)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)
