@@ -4,8 +4,9 @@ REM over, so the site does not sit on the last intraday snapshot all night.
 REM
 REM Without this the 21:00 live build stays up until noon the next day -- fifteen
 REM hours of a page reading "live" and showing intraday crossings in the present
-REM tense. By 21:15 the day's bar is in the feed, so this rolls the levels to the
-REM next session, which is the correct view once trading is done.
+REM tense. This rolls the levels to the
+REM next session, which is the correct view once trading is done. It waits for
+REM the day's bar rather than assuming it has landed -- see await_bars.
 REM
 REM No --live and no --push: nothing is re-priced and nobody's phone rings after
 REM the close. The book is synced, because by now the close IS the decision.
@@ -18,6 +19,17 @@ set LOG=fractal\out\logs\settle_%TODAY%.log
 
 echo ================================================== >> "%LOG%" 2>&1
 echo Settle started %TODAY% %TIME% >> "%LOG%" 2>&1
+
+REM Wait for the day's bars before settling anything. On 2026-09-03 this job ran
+REM 20 minutes after the close, the bars had not published, and it settled off the
+REM PREVIOUS close while the P&L track emailed "0 positions, +0.00%" as a real
+REM session. Waiting on the data beats guessing a later clock time.
+python -m fractal.app.await_bars --minutes 90 >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo SETTLE SKIPPED - bars never published; intraday dashboard left up >> "%LOG%" 2>&1
+  endlocal
+  exit /b 0
+)
 
 python -m fractal.app.etf_report --settle --sync >> "%LOG%" 2>&1
 if errorlevel 1 (
