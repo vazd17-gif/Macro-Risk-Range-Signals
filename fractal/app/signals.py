@@ -242,6 +242,13 @@ EDGE_BY_GAUGE = {
 }
 
 
+# Level, not rate of change -- tested. McCullough reads vol as a spike ("Bond Market
+# Vol is up over +1,000 basis points in less than a week", 3 Sep 2026) while these
+# buckets read where the gauge SITS. The two are only 0.35 correlated, so the spike
+# really is separate information, but it does not predict our signals: over 238
+# events, ADD LONG into a vol spike (5d gauge change >= +10%) returned +0.97% excess
+# against +1.16% when quiet, t=0.99. ADD SHORT had 7 spiking observations, too few to
+# read. No rate-of-change term is warranted on this evidence.
 def edge_for_gauge(level, gauge="VIX"):
     """(buy band, sell band) for a level of `gauge`, or None if unreadable."""
     if level is None or level != level:
