@@ -199,6 +199,22 @@ GAUGE_METALS = ("GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "DUST",
                 "GOLD", "SILVER", "COPPER")
 GAUGE_CRUDE = ("USO", "BNO", "UGA", "WTIC")
 
+# Bond vol and currency vol are their own regimes -- the VIX is not merely a weak
+# proxy for them, it is the wrong sign. Against each name's own realised sigma:
+#
+#   TLT  VIX -0.03 -> MOVE 0.83     UUP  VIX 0.01 -> EVZ 0.23
+#   IEF  VIX -0.05 -> MOVE 0.81     FXB  VIX 0.35 -> EVZ 0.65
+#   LQD  VIX  0.07 -> MOVE 0.74     FXC  VIX 0.33 -> EVZ 0.62
+#   BBN  VIX  0.03 -> MOVE 0.67     FXE  VIX 0.37 -> EVZ 0.66
+#
+# EVZ is euro vol specifically, so it fits the European and G10 crosses well and the
+# yen pair only weakly (FXY 0.17 -> 0.31, YCS 0.29 -> 0.29). It is still the best
+# available FX gauge, and never worse than the VIX for any of them.
+GAUGE_RATES = ("TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "IVOL",
+               "BUXX", "CLOX", "CLOZ", "IIGD", "MTBA", "TBIL", "HBDC",
+               "UST2Y", "UST10Y", "UST30Y")
+GAUGE_FX = ("UUP", "FXB", "FXC", "FXE", "FXY", "YCS", "USD")
+
 
 def gauge_for(ticker):
     """Which volatility index sets the band for this name."""
@@ -206,6 +222,10 @@ def gauge_for(ticker):
         return "GVZ"
     if ticker in GAUGE_CRUDE:
         return "OVX"
+    if ticker in GAUGE_RATES:
+        return "MOVE"
+    if ticker in GAUGE_FX:
+        return "EVZ"
     return "VIX"
 
 
@@ -217,6 +237,8 @@ EDGE_BY_GAUGE = {
     "VIX": EDGE_BY_VIX,
     "GVZ": ((18.0, 0.15, 0.25), (28.0, 0.10, 0.30), (None, 0.10, 0.40)),
     "OVX": ((41.5, 0.15, 0.25), (65.5, 0.10, 0.30), (None, 0.10, 0.40)),
+    "MOVE": ((107.75, 0.15, 0.25), (135.9, 0.10, 0.30), (None, 0.10, 0.40)),
+    "EVZ": ((8.10, 0.15, 0.25), (11.9, 0.10, 0.30), (None, 0.10, 0.40)),
 }
 
 
@@ -887,7 +909,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     scaled = None
     gauge_edges = {}
     if edge is None:
-        for g in ("VIX", "GVZ", "OVX"):
+        for g in ("VIX", "GVZ", "OVX", "MOVE", "EVZ"):
             gx = prices.get(yf_symbol(g))
             if gx is not None and "Close" in gx and len(gx["Close"].dropna()):
                 e = edge_for_gauge(float(gx["Close"].dropna().iloc[-1]), g)
@@ -899,11 +921,12 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
             print("range edge: buy %.0f%% / sell %.0f%%%s"
                   % (100 * edge[0], 100 * edge[1],
                      "" if scaled is not None else "  (VIX unavailable)"))
-            for g in ("GVZ", "OVX"):
+            for g in ("GVZ", "OVX", "MOVE", "EVZ"):
                 if g in gauge_edges:
                     print("            %s buy %.0f%% / sell %.0f%%  (%s)"
                           % (g, 100 * gauge_edges[g][0], 100 * gauge_edges[g][1],
-                             "metals" if g == "GVZ" else "crude"))
+                             {"GVZ": "metals", "OVX": "crude",
+                              "MOVE": "rates", "EVZ": "fx"}[g]))
 
     elif not isinstance(edge, (tuple, list)):
         edge = (float(edge), float(edge))     # a single number pins both sides
