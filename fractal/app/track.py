@@ -217,6 +217,18 @@ def main():
     with io.open(out, "w", encoding="utf-8") as fh:
         fh.write(render(t))
     print("[track] wrote %s" % out)
+    # Do not re-email a session already sent. publish.py has had this guard from
+    # the start; the track did not, so every run that reached this point sent
+    # again. On 3 Sep 2026 overlapping background retries put five copies of the
+    # same P&L in the owner's inbox. --force overrides, for a genuine resend.
+    stamp = repo_path("out", ".track_sent")
+    already = ""
+    if os.path.exists(stamp):
+        already = io.open(stamp, encoding="utf-8").read().strip()
+    if a.send_to and already == session and not a.force:
+        print("[track] already sent the %s track; not sending again (--force to "
+              "override)" % session)
+        return 0
     if a.send_to:
         from . import publish
         msg = publish.build_message([a.send_to], subject="P&L track - %+.2f%% since %s"
@@ -225,6 +237,8 @@ def main():
         publish.deliver(msg, [a.send_to])
         # Say so. The first run printed nothing at all, which is indistinguishable
         # from having quietly failed.
+        with io.open(stamp, "w", encoding="utf-8") as fh:
+            fh.write(session)
         print("[track] sent to %s" % a.send_to)
     return 0
 
