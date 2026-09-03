@@ -372,8 +372,21 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         day = sign * float(r.get("day_pct", np.nan) or np.nan)
         act, why = _action(p.side, r["signal"], bool(r["at_low"]),
                            bool(r["at_high"]), str(r.get("event") or ""))
+        # SESSIONS held, not calendar days, and never negative.
+        #
+        # This was `(asof - entry_date).days`, which broke two ways. An intraday lot
+        # carries TODAY's date while the report is anchored to the settled PRIOR
+        # close, so RSP, JPM, PSP, CRWD and SNOW all read -1 days held on 3 Sep
+        # 2026. And a Friday entry read on Monday counted three days when one
+        # session had passed.
+        #
+        # Business days are the proxy for sessions -- it ignores holidays, which is
+        # a day out at worst and never negative. A lot entered on or after the
+        # report session reads 0: opened this session, nothing held through yet.
         try:
-            held = (pd.Timestamp(r["asof"]) - pd.Timestamp(p.entry_date)).days
+            a = pd.Timestamp(r["asof"]).normalize()
+            e = pd.Timestamp(p.entry_date).normalize()
+            held = max(0, len(pd.bdate_range(e, a)) - 1) if a >= e else 0
         except Exception:
             held = np.nan
         rows.append({

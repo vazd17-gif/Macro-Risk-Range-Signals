@@ -60,6 +60,16 @@ def _new_badge(r):
             'letter-spacing:.04em"> NEW</span>')
 
 
+def _held_label(n):
+    """"opened this session" / "1 session held" / "N sessions held"."""
+    if n is None or not np.isfinite(n):
+        return "held"
+    n = int(n)
+    if n <= 0:
+        return "opened this session"
+    return "%d session%s held" % (n, "" if n == 1 else "s")
+
+
 def _held(book):
     """Tickers currently on the book, for labelling same-day round trips."""
     if book is None or not len(book) or "ticker" not in book:
@@ -1024,7 +1034,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                 '<span style="float:right;font-weight:700;color:%s">%+.2f%%</span></div>'
                 '<div style="color:#5a6270;font-size:12.5px;margin-top:2px">'
                 'entry <b>%s</b> &rarr; spot <b>%s</b>'
-                '<span style="color:#8b94a5"> &middot; %s day%s held &middot; '
+                '<span style="color:#8b94a5"> &middot; %s%s &middot; '
                 'today %+.2f%%</span></div>'
                 '<div style="margin-top:4px"><span style="background:%s;color:#fff;font-size:11px;'
                 'font-weight:700;padding:2px 7px;border-radius:3px">%s</span>'
@@ -1034,8 +1044,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                    if names.get(pos.ticker) else "",
                    pos.side, pos.entry_date, pc, pos.pnl_pct,
                    _f(pos.entry_price), _f(pos.spot),
-                   ("%d" % pos.days_held) if np.isfinite(pos.days_held) else "&ndash;",
-                   "" if pos.days_held == 1 else "s",
+                   _held_label(pos.days_held), "",
                    pos.day_pct,
                    ac, html.escape(pos.action), html.escape(pos.action_why or "holding")))
         pf = ('<tr><td style="padding:20px 0 6px">'
