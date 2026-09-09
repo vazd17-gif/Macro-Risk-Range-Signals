@@ -896,13 +896,14 @@ Volume is shown as a z-score of log volume against the fund's own 1-month and
 3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue
 an unusually light one (z &le; &minus;2).
 <br><br>
-<b>Position sizing.</b> Each open position shows its size beside the side, as a
-percent of capital. 1 unit = 3%%. A position scales in one unit at a time as the
-signal confirms and scales out one unit on a trim, closing only at the floor &mdash;
-so a trim reduces conviction rather than flattening the name. Caps are per asset
-class: equities 9%%, commodities 6%%, fixed income 9%%, FX 12%%, and shorts run
-smaller than longs (3%% vs 9%%). The book is deliberately not fully invested; the
-rest is cash.
+<b>Position sizing scales with the VIX.</b> Each position shows its size beside the
+side, as a percent of capital. The unit is 3%% when the VIX is calm (&lt;19), 2%% in
+chop (19&ndash;29), 1%% in stress (&ge;29) &mdash; so a buy in a panic commits less.
+Per-name caps scale with it: calm equities reach 15%%, commodities 12%%, fixed income
+15%%, FX 18%%; chop and stress are a half and a third of that; shorts stay small. A
+position scales in one unit as the signal confirms and out one unit on a trim, closing
+only at the floor. The book runs cash when few names qualify and sizes DOWN into high
+vol by design.
 </footer></div>
 <script>%s</script>
 """ % (refresh, CSS, _session_label(asof), _universe_label(df), asof, stamp,
@@ -1260,12 +1261,13 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 <tr><td style="padding:22px 0 2px;border-top:1px solid #e6e8ec">
 <div style="font-weight:700;font-size:12px;color:#8b94a5;letter-spacing:.06em">POSITION SIZING</div>
 <div style="color:#8b94a5;font-size:11.5px;margin-top:5px;line-height:1.6">
-Each position shows its size beside the side, as a percent of capital. 1 unit = 3%%.
-A position scales in one unit at a time as the signal confirms and scales out one unit
-on a trim, closing only at the floor &mdash; a trim reduces conviction rather than
-flattening the name. Caps are per asset class: equities 9%%, commodities 6%%, fixed
-income 9%%, FX 12%%, and shorts run smaller than longs (3%% vs 9%%). The book is
-deliberately not fully invested; the rest is cash.</div>
+Each position shows its size beside the side. Sizing scales with the VIX: the unit is
+3%% of capital when calm (&lt;19), 2%% in chop (19&ndash;29), 1%% in stress (&ge;29),
+so a buy in a panic commits less. Per-name caps scale with it &mdash; calm equities
+reach 15%%, commodities 12%%, fixed income 15%%, FX 18%%; chop and stress a half and a
+third of that; shorts stay small. A position scales in one unit as the signal confirms
+and out one unit on a trim, closing only at the floor. The book runs cash when few
+names qualify and sizes DOWN into high vol by design.</div>
 </td></tr>
 </table></td></tr></table></div>
 """ % (_session_label(asof), _universe_label(df), asof, chips,

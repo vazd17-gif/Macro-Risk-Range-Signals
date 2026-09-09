@@ -69,6 +69,14 @@ def session_return(session, book_csv=None, params=None, verbose=True):
         return 0.0, []
 
     bars = _bars(sorted(live["ticker"].unique()), params)
+    # the session's VIX sets the unit size, so a backdated session is sized in its
+    # own regime rather than today's
+    try:
+        vser = load_prices(["^VIX"], params=params, verbose=False)["^VIX"]["Close"].dropna()
+        svix = float(vser.loc[:pd.Timestamp(session)].iloc[-1])
+    except Exception:
+        svix = None
+    upct = P.unit_pct(svix)
     rows = []
     for r in live.itertuples():
         d = bars.get(r.ticker)
@@ -91,7 +99,7 @@ def session_return(session, book_csv=None, params=None, verbose=True):
         to = float(r.exit_price) if closed_today else close
         if not frm:
             continue
-        w = P.units_of(r) * P.UNIT_PCT / 100.0        # fraction of capital in this lot
+        w = P.units_of(r) * upct / 100.0              # fraction of capital in this lot
         rows.append((r.ticker, sign * (to / frm - 1.0) * 100.0,
                      "opened" if opened_today else ("closed" if closed_today else "held"),
                      w))
@@ -108,7 +116,7 @@ def session_return(session, book_csv=None, params=None, verbose=True):
                & ((pos["status"] == P.OPEN)
                   | (pos["exit_date"].astype(str) > str(session)))]
     n_held = len(held)
-    deploy = float(sum(P.units_of(r) for r in held.itertuples()) * P.UNIT_PCT)
+    deploy = float(sum(P.units_of(r) for r in held.itertuples()) * upct)
     return day_ret, detail, deploy, n_held
 
 
@@ -249,9 +257,9 @@ def render(track, book_csv=None):
         '<tr><td style="padding:4px 0;color:#5a6270">%s</td>'
         '<td align="right" style="padding:4px 0;color:#5a6270;'
         'font-variant-numeric:tabular-nums">%s &middot; %du (%.0f%%) from %s</td></tr>'
-        % (r.ticker, r.side, P.units_of(r), P.units_of(r) * P.UNIT_PCT,
+        % (r.ticker, r.side, P.units_of(r), P.size_pct(P.units_of(r)),
            _h.escape(str(r.entry_date))) for r in book.itertuples())
-    deploy_now = sum(P.units_of(r) for r in book.itertuples()) * P.UNIT_PCT
+    deploy_now = sum(P.size_pct(P.units_of(r)) for r in book.itertuples())
     return """<div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
 max-width:640px;margin:0 auto;padding:22px;color:#111">
 <div style="font-size:12px;letter-spacing:.07em;color:#8b94a5;font-weight:700">SIZED P&amp;L TRACK</div>
@@ -271,13 +279,14 @@ inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deploye
 <div style="margin-top:16px;color:#8b94a5;font-size:11px;letter-spacing:.05em">OPEN NOW</div>
 <table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px;margin-top:4px">%s</table>
 <div style="margin-top:20px;color:#8b94a5;font-size:11.5px;line-height:1.6">
-<b>Sizing.</b> 1 unit = 3%% of capital. A position scales in one unit at a time as the
-signal confirms and scales out one unit on a trim, closing only at the floor. Caps
-are per asset class &mdash; equities 9%%, commodities 6%%, fixed income 9%%, FX 12%% &mdash;
-and shorts run smaller than longs (max 3%% vs 9%%). The book is not fully invested; the
-rest is cash, so this is the return on <b>total</b> capital. Sessions before 9 Sep 2026
-are <b>restated</b> at starter sizing (the book was traded binary before then, so no
-ladder history exists). Marked on the full price path; gross of costs.</div></div>""" % (
+<b>Sizing scales with the VIX.</b> The unit is 3%% of capital when the VIX is calm
+(&lt;19), 2%% in chop (19&ndash;29) and 1%% in stress (&ge;29), so a buy in a panic
+commits less. Per-name caps scale with it &mdash; calm equities reach 15%%,
+commodities 12%%, fixed income 15%%, FX 18%%; chop and stress are a half and a third
+of that. Shorts stay small (3%% / 2%% / 1%%). A position scales in one unit at a time
+as the signal confirms and out one unit on a trim, closing only at the floor. The book
+runs cash when few names qualify, so this is the return on <b>total</b> capital, and
+it deliberately sizes DOWN into high vol. Marked on the full price path; gross of costs.</div></div>""" % (
     col, cum, INCEPTION, len(track), len(book), deploy_now, spy_line, rows,
     detail or "&mdash;", holds)
 
