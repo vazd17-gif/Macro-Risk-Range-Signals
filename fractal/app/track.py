@@ -264,7 +264,7 @@ inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deploye
 <td align="right" style="padding-bottom:6px;color:#8b94a5;font-size:11px">POSITIONS &middot; DEPLOYED</td>
 <td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">DAY</td>
 <td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">CUMULATIVE</td>
-<td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">SPY 100%%</td></tr>
+<td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">CUMULATIVE SPY 100%%</td></tr>
 %s</table>
 <div style="margin-top:18px;color:#8b94a5;font-size:11px;letter-spacing:.05em">LATEST SESSION</div>
 <div style="color:#5a6270;font-size:12.5px;margin-top:4px;line-height:1.6">%s</div>
