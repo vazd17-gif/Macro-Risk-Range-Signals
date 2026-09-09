@@ -239,7 +239,7 @@ inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deploye
 <div style="margin-top:20px;color:#8b94a5;font-size:11.5px;line-height:1.6">
 <b>Sizing.</b> 1 unit = 3%% of capital. A position scales in one unit at a time as the
 signal confirms and scales out one unit on a trim, closing only at the floor. Caps
-are per asset class &mdash; equities 9%%, commodities 6%%, fixed income 10%%, FX 12%% &mdash;
+are per asset class &mdash; equities 9%%, commodities 6%%, fixed income 9%%, FX 12%% &mdash;
 and shorts run smaller than longs (max 3%% vs 9%%). The book is not fully invested; the
 rest is cash, so this is the return on <b>total</b> capital. Sessions before 9 Sep 2026
 are <b>restated</b> at starter sizing (the book was traded binary before then, so no

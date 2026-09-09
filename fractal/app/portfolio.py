@@ -64,12 +64,11 @@ OPEN, CLOSED = "open", "closed"
 #
 # Caps are per-asset-class RISK BUDGETS, expressed as a max % and converted to whole
 # units. Longs run bigger than shorts by design (equities 2-6% long vs 1-3% short),
-# which matches where our own signals are weakest. At UNIT_PCT = 3 a short hits its 3%
-# cap in one clip, equities ladder to 9% (3 units) and commodities to 6% (2 units).
-# A budget that is not a multiple of the unit rounds DOWN (never over the cap): only
-# fixed income does, topping at 9% against its 10% budget.
+# which matches where our own signals are weakest. Every budget is a whole multiple
+# of the 3% unit: shorts 3% (1 unit), commodities 6% (2), equities and fixed income
+# 9% (3), FX 12% (4). Nothing rounds.
 UNIT_PCT = 3.0
-CLASS_CAP_PCT = {"commodity": 6.0, "fixed_income": 10.0, "fx_crypto": 12.0}
+CLASS_CAP_PCT = {"commodity": 6.0, "fixed_income": 9.0, "fx_crypto": 12.0}
 EQUITY_CAP_PCT = 9.0
 SHORT_CAP_PCT = 3.0
 START_UNITS = 1
