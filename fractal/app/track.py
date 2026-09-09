@@ -99,9 +99,17 @@ def session_return(session, book_csv=None, params=None, verbose=True):
         return 0.0, []
     # return on total capital = sum(weight_i * ret_i); cash (the rest) earns 0
     day_ret = float(sum(w * (x / 100.0) for _, x, _, w in rows) * 100.0)
-    deploy = float(sum(w for _, _, _, w in rows) * 100.0)   # % of capital at work
     detail = [(tk, x, tag) for tk, x, tag, _ in rows]
-    return day_ret, detail, deploy
+    # Deployment and the position count describe the BOOK HELD at the session close
+    # -- entry on or before the session and not yet exited that day -- so they match
+    # the plain "5 positions x 3% = 15%" reading. The RETURN above still includes
+    # same-day round trips, which realise P&L but are not deployed at the close.
+    held = pos[(pos["entry_date"].astype(str) <= str(session))
+               & ((pos["status"] == P.OPEN)
+                  | (pos["exit_date"].astype(str) > str(session)))]
+    n_held = len(held)
+    deploy = float(sum(P.units_of(r) for r in held.itertuples()) * P.UNIT_PCT)
+    return day_ret, detail, deploy, n_held
 
 
 def bars_ready(session, book_csv=None, params=None):
@@ -135,10 +143,11 @@ def bars_ready(session, book_csv=None, params=None):
 def update(session=None, book_csv=None, custom=None, params=None, verbose=True):
     """Add or replace one session in the track. Returns the whole track."""
     session = str(session or dt.date.today())
-    day_pct, detail, deploy = session_return(session, book_csv=book_csv, params=params)
+    day_pct, detail, deploy, n_held = session_return(
+        session, book_csv=book_csv, params=params)
     t = load_track(custom)
     t = t[t["date"].astype(str) != session]
-    row = {"date": session, "n_open": len(detail), "day_pct": round(day_pct, 4),
+    row = {"date": session, "n_open": n_held, "day_pct": round(day_pct, 4),
            "cum_pct": 0.0, "deploy_pct": round(deploy, 2),
            "detail": "; ".join("%s %+.2f%% (%s)" % (a, b, c) for a, b, c in detail)}
     t = pd.concat([t, pd.DataFrame([row])], ignore_index=True).sort_values("date")
@@ -150,7 +159,7 @@ def update(session=None, book_csv=None, custom=None, params=None, verbose=True):
         spy_txt = ("  |  SPY %+.2f%%  (%+.2f%% vs SPY)"
                    % (spy, t["cum_pct"].iloc[-1] - spy)) if spy is not None else ""
         print("[track] %s: %d position(s), %.0f%% deployed, %+.2f%% on the "
-              "session, %+.2f%% since %s%s" % (session, len(detail), deploy, day_pct,
+              "session, %+.2f%% since %s%s" % (session, n_held, deploy, day_pct,
               t["cum_pct"].iloc[-1], INCEPTION, spy_txt))
         for a, b, c in detail:
             print("    %-6s %+.2f%%  (%s)" % (a, b, c))
@@ -158,6 +167,26 @@ def update(session=None, book_csv=None, custom=None, params=None, verbose=True):
 
 
 # ------------------------------------------------------------------- reporting
+
+def spy_cum_series(track, params=None):
+    """Cumulative SPY return (100% invested) at each tracked session, from inception.
+
+    Compounded over the same session dates as the book, so each row's SPY figure is
+    what a full position in SPY would have made from inception through that session.
+    Returns a dict {date_str: cum_pct}, empty if SPY is unavailable.
+    """
+    if track is None or track.empty:
+        return {}
+    params = params or load_params()
+    d = load_prices(["SPY"], params=params, verbose=False).get("SPY")
+    if d is None or "Close" not in d:
+        return {}
+    r = d["Close"].dropna().pct_change()
+    dates = pd.to_datetime(track["date"].astype(str))
+    sel = r.reindex(dates).fillna(0.0)
+    cum = ((1 + sel).cumprod() - 1.0) * 100.0
+    return {str(k.date()): float(v) for k, v in cum.items()}
+
 
 def spy_since_inception(track, params=None):
     """SPY total return over exactly the sessions the track covers.
@@ -189,7 +218,8 @@ def render(track, book_csv=None):
     last = track.iloc[-1]
     cum = float(last["cum_pct"])
     col = "#0b8f6e" if cum >= 0 else "#d33"
-    spy = spy_since_inception(track, book_csv=None) if False else spy_since_inception(track)
+    spy_map = spy_cum_series(track)
+    spy = spy_since_inception(track)
     if spy is not None:
         vs = cum - spy
         spy_line = ('<div style="color:#5a6270;font-size:13px;margin:-12px 0 18px">'
@@ -205,10 +235,13 @@ def render(track, book_csv=None):
         '<td align="right" style="padding:6px 0 6px 16px;border-bottom:1px solid #e6e8ec;'
         'font-variant-numeric:tabular-nums;color:%s">%+.2f%%</td>'
         '<td align="right" style="padding:6px 0 6px 16px;border-bottom:1px solid #e6e8ec;'
-        'font-variant-numeric:tabular-nums;font-weight:700;color:%s">%+.2f%%</td></tr>'
+        'font-variant-numeric:tabular-nums;font-weight:700;color:%s">%+.2f%%</td>'
+        '<td align="right" style="padding:6px 0 6px 16px;border-bottom:1px solid #e6e8ec;'
+        'font-variant-numeric:tabular-nums;color:#8b94a5">%s</td></tr>'
         % (r["date"], int(r["n_open"]), float(r.get("deploy_pct", 0) or 0),
            "#0b8f6e" if r["day_pct"] >= 0 else "#d33", r["day_pct"],
-           "#0b8f6e" if r["cum_pct"] >= 0 else "#d33", r["cum_pct"])
+           "#0b8f6e" if r["cum_pct"] >= 0 else "#d33", r["cum_pct"],
+           ("%+.2f%%" % spy_map[str(r["date"])]) if str(r["date"]) in spy_map else "&ndash;")
         for _, r in track.iterrows())
     detail = _h.escape(str(last.get("detail", "") or ""))
     book = P.open_positions(book_csv)
@@ -230,7 +263,8 @@ inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deploye
 <tr><td style="padding-bottom:6px;color:#8b94a5;font-size:11px;letter-spacing:.05em">SESSION</td>
 <td align="right" style="padding-bottom:6px;color:#8b94a5;font-size:11px">POSITIONS &middot; DEPLOYED</td>
 <td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">DAY</td>
-<td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">CUMULATIVE</td></tr>
+<td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">CUMULATIVE</td>
+<td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">SPY 100%%</td></tr>
 %s</table>
 <div style="margin-top:18px;color:#8b94a5;font-size:11px;letter-spacing:.05em">LATEST SESSION</div>
 <div style="color:#5a6270;font-size:12.5px;margin-top:4px;line-height:1.6">%s</div>
