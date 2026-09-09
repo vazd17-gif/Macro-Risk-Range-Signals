@@ -637,8 +637,14 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # band exists to stop. The TRADE tier below still runs.
     if trend_neutral:
         broke_trend = recl_trend = False
+    # A fresh bearish TREND break is a SHORT ENTRY, not just a long exit. Our
+    # "short the rip" rule (range high in a bear TREND) almost never fires, because
+    # a name in a clean downtrend rarely rallies to its range high -- DKS, JETS, XLU
+    # and XLI have been bearish TREND all year and never triggered a short. Keith
+    # shorts the breakdown itself. So a TREND break now opens a short; the book flips
+    # any long into it, and a long-only reader treats SELL SHORT as "exit and avoid".
     if broke_trend and trend_first:
-        return REMOVE_LONG, event + " - TREND is the position, exit it"
+        return ADD_SHORT, event + " - TREND broke bearish, short it (exit any long)"
     if recl_trend and trend_first:
         return COVER_SHORT, event + " - TREND reclaimed, close the short"
 
@@ -676,7 +682,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return COVER_SHORT, event + " - close the short"
     # A TREND event that yielded to a fresher TRADE one still stands behind it.
     if broke_trend:
-        return REMOVE_LONG, event + " - TREND is the position, exit it"
+        return ADD_SHORT, event + " - TREND broke bearish, short it (exit any long)"
     if recl_trend:
         return COVER_SHORT, event + " - TREND reclaimed, close the short"
 
