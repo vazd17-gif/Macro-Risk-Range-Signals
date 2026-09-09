@@ -897,7 +897,7 @@ Volume is shown as a z-score of log volume against the fund's own 1-month and
 an unusually light one (z &le; &minus;2).
 <br><br>
 <b>Position sizing.</b> Each open position shows its size beside the side, as a
-percent of capital. 1 unit = 2%%. A position scales in one unit at a time as the
+percent of capital. 1 unit = 3%%. A position scales in one unit at a time as the
 signal confirms and scales out one unit on a trim, closing only at the floor &mdash;
 so a trim reduces conviction rather than flattening the name. Caps are per asset
 class: equities 6%%, commodities 4%%, fixed income 10%%, FX 12%%, and shorts run
@@ -1038,7 +1038,8 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
             ac = P.ACTION_COLOUR.get(pos.action, "#8b94a5")
             pc = "#0b8f6e" if pos.pnl_pct >= 0 else "#d33"
             psz = getattr(pos, "size_pct", np.nan)
-            pside = "%s %.0f%%" % (pos.side, psz) if np.isfinite(psz) else pos.side
+            pside = ("%s <b style=\"color:#111\">%.0f%%</b>" % (pos.side, psz)
+                     if np.isfinite(psz) else pos.side)
             items.append(
                 '<tr><td style="padding:9px 0;border-bottom:1px solid #e6e8ec">'
                 '<div><span style="font-weight:700;font-size:15px;color:#111">%s</span>'
@@ -1259,7 +1260,7 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 <tr><td style="padding:22px 0 2px;border-top:1px solid #e6e8ec">
 <div style="font-weight:700;font-size:12px;color:#8b94a5;letter-spacing:.06em">POSITION SIZING</div>
 <div style="color:#8b94a5;font-size:11.5px;margin-top:5px;line-height:1.6">
-Each position shows its size beside the side, as a percent of capital. 1 unit = 2%%.
+Each position shows its size beside the side, as a percent of capital. 1 unit = 3%%.
 A position scales in one unit at a time as the signal confirms and scales out one unit
 on a trim, closing only at the floor &mdash; a trim reduces conviction rather than
 flattening the name. Caps are per asset class: equities 6%%, commodities 4%%, fixed

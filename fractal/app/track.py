@@ -201,12 +201,12 @@ def render(track, book_csv=None):
     rows = "".join(
         '<tr><td style="padding:6px 0;border-bottom:1px solid #e6e8ec">%s</td>'
         '<td align="right" style="padding:6px 0;border-bottom:1px solid #e6e8ec;'
-        'font-variant-numeric:tabular-nums">%d</td>'
+        'font-variant-numeric:tabular-nums">%d &middot; %.0f%%</td>'
         '<td align="right" style="padding:6px 0 6px 16px;border-bottom:1px solid #e6e8ec;'
         'font-variant-numeric:tabular-nums;color:%s">%+.2f%%</td>'
         '<td align="right" style="padding:6px 0 6px 16px;border-bottom:1px solid #e6e8ec;'
         'font-variant-numeric:tabular-nums;font-weight:700;color:%s">%+.2f%%</td></tr>'
-        % (r["date"], int(r["n_open"]),
+        % (r["date"], int(r["n_open"]), float(r.get("deploy_pct", 0) or 0),
            "#0b8f6e" if r["day_pct"] >= 0 else "#d33", r["day_pct"],
            "#0b8f6e" if r["cum_pct"] >= 0 else "#d33", r["cum_pct"])
         for _, r in track.iterrows())
@@ -228,7 +228,7 @@ inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deploye
 %s
 <table width="100%%" cellpadding="0" cellspacing="0" style="font-size:13px">
 <tr><td style="padding-bottom:6px;color:#8b94a5;font-size:11px;letter-spacing:.05em">SESSION</td>
-<td align="right" style="padding-bottom:6px;color:#8b94a5;font-size:11px">POSITIONS</td>
+<td align="right" style="padding-bottom:6px;color:#8b94a5;font-size:11px">POSITIONS &middot; DEPLOYED</td>
 <td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">DAY</td>
 <td align="right" style="padding:0 0 6px 16px;color:#8b94a5;font-size:11px">CUMULATIVE</td></tr>
 %s</table>
@@ -237,7 +237,7 @@ inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deploye
 <div style="margin-top:16px;color:#8b94a5;font-size:11px;letter-spacing:.05em">OPEN NOW</div>
 <table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px;margin-top:4px">%s</table>
 <div style="margin-top:20px;color:#8b94a5;font-size:11.5px;line-height:1.6">
-<b>Sizing.</b> 1 unit = 2%% of capital. A position scales in one unit at a time as the
+<b>Sizing.</b> 1 unit = 3%% of capital. A position scales in one unit at a time as the
 signal confirms and scales out one unit on a trim, closing only at the floor. Caps
 are per asset class &mdash; equities 6%%, commodities 4%%, fixed income 10%%, FX 12%% &mdash;
 and shorts run smaller than longs (max 3%% vs 6%%). The book is not fully invested; the
