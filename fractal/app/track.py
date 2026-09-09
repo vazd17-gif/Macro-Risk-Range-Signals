@@ -47,7 +47,14 @@ def _bars(tickers, params):
 
 
 def session_return(session, book_csv=None, params=None, verbose=True):
-    """Equal-weighted return of the book for one session, and the per-name detail."""
+    """Unit-weighted return of the book for one session, and the per-name detail.
+
+    Each lot contributes its move scaled by its size: units x UNIT_PCT of capital.
+    The book is not fully invested -- the residual is cash and earns nothing -- so
+    this is the return on TOTAL capital, which is the honest sized-book number.
+    Before sizing existed the book was equal-weighted; a lot with no units recorded
+    counts as the starter unit, so old sessions still compute.
+    """
     params = params or load_params()
     day = pd.Timestamp(session)
     pos = P.load(book_csv)
@@ -84,11 +91,17 @@ def session_return(session, book_csv=None, params=None, verbose=True):
         to = float(r.exit_price) if closed_today else close
         if not frm:
             continue
+        w = P.units_of(r) * P.UNIT_PCT / 100.0        # fraction of capital in this lot
         rows.append((r.ticker, sign * (to / frm - 1.0) * 100.0,
-                     "opened" if opened_today else ("closed" if closed_today else "held")))
+                     "opened" if opened_today else ("closed" if closed_today else "held"),
+                     w))
     if not rows:
         return 0.0, []
-    return float(np.mean([x[1] for x in rows])), rows
+    # return on total capital = sum(weight_i * ret_i); cash (the rest) earns 0
+    day_ret = float(sum(w * (x / 100.0) for _, x, _, w in rows) * 100.0)
+    deploy = float(sum(w for _, _, _, w in rows) * 100.0)   # % of capital at work
+    detail = [(tk, x, tag) for tk, x, tag, _ in rows]
+    return day_ret, detail, deploy
 
 
 def bars_ready(session, book_csv=None, params=None):
@@ -122,19 +135,20 @@ def bars_ready(session, book_csv=None, params=None):
 def update(session=None, book_csv=None, custom=None, params=None, verbose=True):
     """Add or replace one session in the track. Returns the whole track."""
     session = str(session or dt.date.today())
-    day_pct, detail = session_return(session, book_csv=book_csv, params=params)
+    day_pct, detail, deploy = session_return(session, book_csv=book_csv, params=params)
     t = load_track(custom)
     t = t[t["date"].astype(str) != session]
     row = {"date": session, "n_open": len(detail), "day_pct": round(day_pct, 4),
-           "cum_pct": 0.0,
+           "cum_pct": 0.0, "deploy_pct": round(deploy, 2),
            "detail": "; ".join("%s %+.2f%% (%s)" % (a, b, c) for a, b, c in detail)}
     t = pd.concat([t, pd.DataFrame([row])], ignore_index=True).sort_values("date")
     # Compound, so the cumulative is a real return rather than a sum of percentages.
     t["cum_pct"] = ((1 + t["day_pct"] / 100.0).cumprod() - 1.0) * 100.0
     t.to_csv(track_path(custom), index=False)
     if verbose:
-        print("[track] %s: %d position(s), %+.2f%% on the session, %+.2f%% since %s"
-              % (session, len(detail), day_pct, t["cum_pct"].iloc[-1], INCEPTION))
+        print("[track] %s: %d position(s), %.0f%% deployed, %+.2f%% on the "
+              "session, %+.2f%% since %s" % (session, len(detail), deploy, day_pct,
+              t["cum_pct"].iloc[-1], INCEPTION))
         for a, b, c in detail:
             print("    %-6s %+.2f%%  (%s)" % (a, b, c))
     return t
@@ -168,14 +182,16 @@ def render(track, book_csv=None):
     holds = "".join(
         '<tr><td style="padding:4px 0;color:#5a6270">%s</td>'
         '<td align="right" style="padding:4px 0;color:#5a6270;'
-        'font-variant-numeric:tabular-nums">%s from %s</td></tr>'
-        % (r.ticker, r.side, _h.escape(str(r.entry_date))) for r in book.itertuples())
+        'font-variant-numeric:tabular-nums">%s &middot; %du (%.0f%%) from %s</td></tr>'
+        % (r.ticker, r.side, P.units_of(r), P.units_of(r) * P.UNIT_PCT,
+           _h.escape(str(r.entry_date))) for r in book.itertuples())
+    deploy_now = sum(P.units_of(r) for r in book.itertuples()) * P.UNIT_PCT
     return """<div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
 max-width:640px;margin:0 auto;padding:22px;color:#111">
-<div style="font-size:12px;letter-spacing:.07em;color:#8b94a5;font-weight:700">EQUAL-WEIGHTED P&amp;L TRACK</div>
+<div style="font-size:12px;letter-spacing:.07em;color:#8b94a5;font-weight:700">SIZED P&amp;L TRACK</div>
 <div style="font-size:30px;font-weight:700;margin:6px 0 2px;color:%s">%+.2f%%</div>
-<div style="color:#5a6270;font-size:13px;margin-bottom:18px">since inception %s
-&middot; %d session(s) &middot; %d open now</div>
+<div style="color:#5a6270;font-size:13px;margin-bottom:18px">on total capital since
+inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deployed</div>
 <table width="100%%" cellpadding="0" cellspacing="0" style="font-size:13px">
 <tr><td style="padding-bottom:6px;color:#8b94a5;font-size:11px;letter-spacing:.05em">SESSION</td>
 <td align="right" style="padding-bottom:6px;color:#8b94a5;font-size:11px">POSITIONS</td>
@@ -187,10 +203,14 @@ max-width:640px;margin:0 auto;padding:22px;color:#111">
 <div style="margin-top:16px;color:#8b94a5;font-size:11px;letter-spacing:.05em">OPEN NOW</div>
 <table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px;margin-top:4px">%s</table>
 <div style="margin-top:20px;color:#8b94a5;font-size:11.5px;line-height:1.6">
-Equal weight across whatever is open, with no position cap &mdash; a one-name book is
-fully invested in one name. Marked on the full price path, so overnight moves count.
-Gross of costs.</div></div>""" % (col, cum, INCEPTION, len(track),
-                                  len(book), rows, detail or "&mdash;", holds)
+<b>Sizing.</b> 1 unit = 2%% of capital. A position scales in one unit at a time as the
+signal confirms and scales out one unit on a trim, closing only at the floor. Caps
+are per asset class &mdash; equities 6%%, commodities 4%%, fixed income 10%%, FX 12%% &mdash;
+and shorts run smaller than longs (max 3%% vs 6%%). The book is not fully invested; the
+rest is cash, so this is the return on <b>total</b> capital. Sessions before 9 Sep 2026
+are <b>restated</b> at starter sizing (the book was traded binary before then, so no
+ladder history exists). Marked on the full price path; gross of costs.</div></div>""" % (
+    col, cum, INCEPTION, len(track), len(book), deploy_now, rows, detail or "&mdash;", holds)
 
 
 def main():

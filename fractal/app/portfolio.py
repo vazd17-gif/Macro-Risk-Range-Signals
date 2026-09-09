@@ -47,11 +47,60 @@ import pandas as pd
 from ..data.loader import load_prices, next_session, repo_path
 from . import signals as S
 
-COLUMNS = ["ticker", "side", "entry_date", "entry_price", "shares",
+COLUMNS = ["ticker", "side", "entry_date", "entry_price", "shares", "units",
            "notes", "status", "exit_date", "exit_price"]
+
+from ..data.etf_universe import group_of
 
 LONG, SHORT = "long", "short"
 OPEN, CLOSED = "open", "closed"
+
+
+# ---- position sizing (Keith McCullough's conviction framework) ----------------
+# 1 unit = UNIT_PCT of capital. A position scales IN one unit at a time as the
+# signal confirms, and scales OUT one unit at a time on a trim, closing only at the
+# floor. This is the shape a backtest showed beats equal-weight per dollar deployed
+# (+95% vs +83%, Sharpe 0.95 vs 0.88 over 3y) -- see the momentum/sizing work.
+#
+# Caps are per-asset-class RISK BUDGETS, expressed as a max % and converted to whole
+# units. Longs run bigger than shorts by design (equities 2-6% long vs 1-3% short),
+# which matches where our own signals are weakest. At UNIT_PCT = 2 the 3% short cap
+# rounds to a single unit, so a short is a fixed 2% clip for now; a laddered short
+# would need a smaller unit.
+UNIT_PCT = 2.0
+CLASS_CAP_PCT = {"commodity": 4.0, "fixed_income": 10.0, "fx_crypto": 12.0}
+EQUITY_CAP_PCT = 6.0
+SHORT_CAP_PCT = 3.0
+START_UNITS = 1
+
+
+def max_units(ticker, side):
+    """Ceiling in whole units for this name and side."""
+    if side == SHORT:
+        return max(1, int(SHORT_CAP_PCT // UNIT_PCT))
+    cap = CLASS_CAP_PCT.get(group_of(ticker), EQUITY_CAP_PCT)
+    return max(1, int(cap // UNIT_PCT))
+
+
+def units_of(row):
+    """Units on a position row; a pre-sizing row (NaN) counts as the starter unit.
+
+    Robust to a Series, a dict, or an itertuples namedtuple.
+    """
+    if hasattr(row, "get"):
+        u = row.get("units")
+    elif hasattr(row, "units"):
+        u = row.units
+    else:
+        try:
+            u = row["units"]
+        except Exception:
+            u = None
+    try:
+        u = float(u)
+    except (TypeError, ValueError):
+        return START_UNITS
+    return int(u) if u == u and u >= 1 else START_UNITS
 
 # Action vocabulary: the order to place, in the same words the report uses for the
 # signal that produced it. SELL LONGS flattens a long; SELL SHORT opens or adds to a
@@ -131,7 +180,8 @@ def live_spot(tickers, asof=""):
     return fresh
 
 
-def add_position(ticker, side, price=None, date=None, shares=None, notes="", custom=None):
+def add_position(ticker, side, price=None, date=None, shares=None, notes="",
+                 units=START_UNITS, custom=None):
     """Open a lot. Price and date default to the last completed close."""
     side = side.lower()
     if side not in (LONG, SHORT):
@@ -148,7 +198,8 @@ def add_position(ticker, side, price=None, date=None, shares=None, notes="", cus
     row = {
         "ticker": ticker, "side": side, "entry_date": date,
         "entry_price": float(price), "shares": shares if shares is not None else np.nan,
-        "notes": notes, "status": OPEN, "exit_date": np.nan, "exit_price": np.nan,
+        "units": int(units), "notes": notes, "status": OPEN,
+        "exit_date": np.nan, "exit_price": np.nan,
     }
     new = pd.DataFrame([row], columns=COLUMNS)
     df = new if df.empty else pd.concat([df, new], ignore_index=True)
@@ -264,49 +315,93 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
             if verbose:
                 print("  no clean intraday break to act on")
             return [], []
-    held = open_positions(custom)
-    have = dict(zip(held["ticker"], held["side"])) if not held.empty else {}
-    entry = dict(zip(held["ticker"], held["entry_price"])) if not held.empty else {}
+    df = load(custom)
     opened, closed = [], []
 
-    def _close(tk, price, why, when=None):
-        side, ent = have.get(tk), entry.get(tk)
-        # Dated to the session it happened in, exactly as an entry is. Left to
-        # default, an intraday exit landed on the PREVIOUS close, so every intraday
-        # round trip recorded an exit_date before its own entry_date and the closes
-        # filed themselves under yesterday.
-        n, px = close_position(tk, price=price, date=when, custom=custom)
-        sign = 1.0 if side == LONG else -1.0
-        pnl = (100.0 * sign * (px / float(ent) - 1.0)) if ent else float("nan")
-        have.pop(tk, None)
-        closed.append({"ticker": tk, "price": px, "why": why, "pnl_pct": pnl})
+    def _open_idx(tk, side=None):
+        m = (df["ticker"] == tk) & (df["status"] == OPEN)
+        if side is not None:
+            m = m & (df["side"] == side)
+        idx = df.index[m]
+        return idx[-1] if len(idx) else None
+
+    def _held_side(tk):
+        i = _open_idx(tk)
+        return df.at[i, "side"] if i is not None else None
+
+    def _close_lot(idx, price, why, when, u_taken=None):
+        """Close a lot outright, or peel one unit off and keep the rest open."""
+        nonlocal df
+        side = df.at[idx, "side"]; ent = float(df.at[idx, "entry_price"])
+        u = units_of(df.loc[idx]); sign = 1.0 if side == LONG else -1.0
+        pnl = 100.0 * sign * (price / ent - 1.0) if ent else float("nan")
+        if u_taken is None or u_taken >= u:                       # full close
+            df.at[idx, "status"] = CLOSED
+            df.at[idx, "exit_date"] = when
+            df.at[idx, "exit_price"] = float(price)
+            taken = u
+        else:                                                     # partial: peel 1u
+            peel = {"ticker": df.at[idx, "ticker"], "side": side, "entry_date":
+                    df.at[idx, "entry_date"], "entry_price": ent, "shares": np.nan,
+                    "units": int(u_taken), "notes": "trim", "status": CLOSED,
+                    "exit_date": when, "exit_price": float(price)}
+            df = pd.concat([df, pd.DataFrame([peel], columns=COLUMNS)],
+                           ignore_index=True)
+            df.at[idx, "units"] = u - u_taken
+            taken = u_taken
+        closed.append({"ticker": df.at[idx, "ticker"], "price": float(price),
+                       "why": why, "pnl_pct": pnl, "units": int(taken)})
         if verbose:
-            print("  closed %s at %.2f (%s) - %+.2f%% since entry" % (tk, px, why, pnl))
+            tag = "" if u_taken is None else " (%du of %d)" % (int(taken), int(u))
+            print("  closed %s at %.2f (%s%s) - %+.2f%% since entry"
+                  % (df.at[idx, "ticker"], price, why, tag, pnl))
 
     for r in sig_df.itertuples():
         sig = getattr(r, "signal", None)
         tk, price = r.ticker, float(r.spot)
-        # An intraday fill belongs to the session it happened in, not to the close
-        # the levels came from. Computed once, and used by both sides.
         when = next_session(getattr(r, "asof", "")) if only_intraday else getattr(r, "asof", "")
-        side_out = AUTO_CLOSE.get(sig)
-        if side_out and have.get(tk) == side_out:
-            _close(tk, price, sig, when=when)
 
-        side_in = AUTO_OPEN.get(sig)
-        if side_in is None or have.get(tk) == side_in:
-            continue
-        if tk in have:                      # holding the other way: flip it
-            _close(tk, price, "%s - flipping to %s" % (sig, side_in), when=when)
-        row = add_position(tk, side_in, price=price, date=str(when) or None,
-                           notes="auto: %s%s" % (sig, " (intraday)" if only_intraday else ""),
-                           custom=custom)
-        have[tk] = side_in
-        entry[tk] = row["entry_price"]
-        opened.append(row)
-        if verbose:
-            print("  opened %s %s at %.2f (%s)" % (side_in, tk, row["entry_price"], sig))
+        side_out = AUTO_CLOSE.get(sig)                # a trim/remove for this side
+        if side_out is not None:
+            idx = _open_idx(tk, side_out)
+            if idx is not None:
+                full = sig in (S.REMOVE_LONG, S.COVER_SHORT)
+                u = units_of(df.loc[idx])
+                if full or u <= START_UNITS:
+                    _close_lot(idx, price, sig, when)          # flatten
+                else:
+                    _close_lot(idx, price, sig, when, u_taken=1)  # trim one unit
 
+        side_in = AUTO_OPEN.get(sig)                  # a buy/short for this side
+        if side_in is None or _held_side(tk) == side_in and                 units_of(df.loc[_open_idx(tk, side_in)]) >= max_units(tk, side_in):
+            continue                                  # nothing to do / already at cap
+        idx = _open_idx(tk, side_in)
+        other = _open_idx(tk)
+        if idx is None and other is not None:         # holding the other way: flip
+            _close_lot(other, price, "%s - flipping to %s" % (sig, side_in), when)
+        if idx is not None:                           # scale IN one unit
+            u = units_of(df.loc[idx]); ent = float(df.at[idx, "entry_price"])
+            df.at[idx, "entry_price"] = (u * ent + price) / (u + 1)   # blended cost
+            df.at[idx, "units"] = u + 1
+            opened.append({"ticker": tk, "side": side_in, "entry_price": price,
+                           "units": u + 1, "added": 1})
+            if verbose:
+                print("  added %s %s -> %du at %.2f (%s)"
+                      % (side_in, tk, u + 1, price, sig))
+        else:                                         # fresh position at the floor
+            fresh = {"ticker": tk, "side": side_in, "entry_date": str(when) or None,
+                     "entry_price": float(price), "shares": np.nan,
+                     "units": START_UNITS, "notes": "auto: %s%s" % (sig,
+                     " (intraday)" if only_intraday else ""), "status": OPEN,
+                     "exit_date": np.nan, "exit_price": np.nan}
+            df = pd.concat([df, pd.DataFrame([fresh], columns=COLUMNS)],
+                           ignore_index=True)
+            opened.append({"ticker": tk, "side": side_in, "entry_price": float(price),
+                           "units": START_UNITS, "added": START_UNITS})
+            if verbose:
+                print("  opened %s %s at %.2f (%s)" % (side_in, tk, price, sig))
+
+    save(df, custom)
     if verbose and not (opened or closed):
         print("  book already matches the signals")
     return opened, closed
@@ -329,8 +424,9 @@ def closed_on(session, custom=None):
     sign = np.where(out["side"] == LONG, 1.0, -1.0)
     out["pnl_pct"] = 100.0 * sign * (
         out["exit_price"].astype(float) / out["entry_price"].astype(float) - 1.0)
+    out["units"] = out.apply(units_of, axis=1)
     return out[["ticker", "side", "entry_date", "entry_price",
-                "exit_date", "exit_price", "pnl_pct", "notes"]]
+                "exit_date", "exit_price", "pnl_pct", "units", "notes"]]
 
 
 def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
@@ -355,6 +451,7 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         if p.ticker not in s.index:
             rows.append({"ticker": p.ticker, "side": p.side, "entry_date": p.entry_date,
                          "entry_price": float(p.entry_price), "shares": p.shares,
+                         "units": units_of(p), "size_pct": units_of(p) * UNIT_PCT,
                          "spot": np.nan, "pnl_pct": np.nan,
                          "day_pct": np.nan, "days_held": np.nan,
                          "range_low": np.nan, "range_high": np.nan, "pos_in_range": np.nan,
@@ -391,7 +488,8 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
             held = np.nan
         rows.append({
             "ticker": p.ticker, "side": p.side, "entry_date": p.entry_date,
-            "entry_price": entry, "shares": p.shares, "spot": spot,
+            "entry_price": entry, "shares": p.shares,
+            "units": units_of(p), "size_pct": units_of(p) * UNIT_PCT, "spot": spot,
             "pnl_pct": 100 * pnl, "day_pct": day, "days_held": held,
             "range_low": float(r["range_low"]), "range_high": float(r["range_high"]),
             "pos_in_range": float(r["pos_in_range"]),

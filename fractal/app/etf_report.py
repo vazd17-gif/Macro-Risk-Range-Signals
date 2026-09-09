@@ -782,6 +782,8 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             pc = "#0ea37f" if b.pnl_pct >= 0 else "#ef5350"
             tc = "#0ea37f" if (b.day_pct or 0) >= 0 else "#ef5350"
             sidec = "#0ea37f" if b.side == "long" else "#ef5350"
+            sz = getattr(b, "size_pct", np.nan)
+            side_lbl = "%s %.0f%%" % (b.side, sz) if np.isfinite(sz) else b.side
             days = ("%d" % b.days_held) if np.isfinite(b.days_held) else "&ndash;"
             prow.append(
                 '<tr><td class="l"><span class="tk">%s</span></td>'
@@ -794,7 +796,7 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
                 '<td>%s</td>'
                 '<td class="l"><span class="pill" style="color:%s;background:%s22;border:1px solid %s55">%s</span></td>'
                 '<td class="l why">%s</td></tr>'
-                % (b.ticker, sidec, b.side, b.entry_date,
+                % (b.ticker, sidec, side_lbl, b.entry_date,
                    b.entry_price, _f(b.entry_price),
                    b.spot, _f(b.spot),
                    b.pnl_pct, pc, b.pnl_pct,
@@ -893,6 +895,14 @@ is falling, red when it is rising.
 Volume is shown as a z-score of log volume against the fund's own 1-month and
 3-month distributions; amber marks an unusually heavy session (z &ge; +2) and blue
 an unusually light one (z &le; &minus;2).
+<br><br>
+<b>Position sizing.</b> Each open position shows its size beside the side, as a
+percent of capital. 1 unit = 2%%. A position scales in one unit at a time as the
+signal confirms and scales out one unit on a trim, closing only at the floor &mdash;
+so a trim reduces conviction rather than flattening the name. Caps are per asset
+class: equities 6%%, commodities 4%%, fixed income 10%%, FX 12%%, and shorts run
+smaller than longs (3%% vs 6%%). The book is deliberately not fully invested; the
+rest is cash.
 </footer></div>
 <script>%s</script>
 """ % (refresh, CSS, _session_label(asof), _universe_label(df), asof, stamp,
@@ -1027,6 +1037,8 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
         for pos in book.itertuples():
             ac = P.ACTION_COLOUR.get(pos.action, "#8b94a5")
             pc = "#0b8f6e" if pos.pnl_pct >= 0 else "#d33"
+            psz = getattr(pos, "size_pct", np.nan)
+            pside = "%s %.0f%%" % (pos.side, psz) if np.isfinite(psz) else pos.side
             items.append(
                 '<tr><td style="padding:9px 0;border-bottom:1px solid #e6e8ec">'
                 '<div><span style="font-weight:700;font-size:15px;color:#111">%s</span>'
@@ -1042,7 +1054,7 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
                 % (pos.ticker,
                    (html.escape(names.get(pos.ticker, "")) + " &nbsp;&middot;&nbsp; ")
                    if names.get(pos.ticker) else "",
-                   pos.side, pos.entry_date, pc, pos.pnl_pct,
+                   pside, pos.entry_date, pc, pos.pnl_pct,
                    _f(pos.entry_price), _f(pos.spot),
                    _held_label(pos.days_held), "",
                    pos.day_pct,
@@ -1244,6 +1256,16 @@ spot &middot; range low &middot; range high &middot; <span style="color:#0ea37f"
 volume z-score vs the 1-month and vs the 3-month distribution</div>
 </td></tr>
 <tr><td><table width="100%%" cellpadding="0" cellspacing="0" style="font-size:12.5px">%s</table></td></tr>
+<tr><td style="padding:22px 0 2px;border-top:1px solid #e6e8ec">
+<div style="font-weight:700;font-size:12px;color:#8b94a5;letter-spacing:.06em">POSITION SIZING</div>
+<div style="color:#8b94a5;font-size:11.5px;margin-top:5px;line-height:1.6">
+Each position shows its size beside the side, as a percent of capital. 1 unit = 2%%.
+A position scales in one unit at a time as the signal confirms and scales out one unit
+on a trim, closing only at the floor &mdash; a trim reduces conviction rather than
+flattening the name. Caps are per asset class: equities 6%%, commodities 4%%, fixed
+income 10%%, FX 12%%, and shorts run smaller than longs (3%% vs 6%%). The book is
+deliberately not fully invested; the rest is cash.</div>
+</td></tr>
 </table></td></tr></table></div>
 """ % (_session_label(asof), _universe_label(df), asof, chips,
        _explainer(), pf, sections,
