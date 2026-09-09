@@ -904,6 +904,13 @@ Per-name caps scale with it: calm equities reach 15%%, commodities 12%%, fixed i
 position scales in one unit as the signal confirms and out one unit on a trim, closing
 only at the floor. The book runs cash when few names qualify and sizes DOWN into high
 vol by design.
+<br><br>
+<b>Shorts are gated on the market.</b> A short only opens when the S&amp;P 500 is
+below its OWN TREND &mdash; a market downtrend. In an uptrend the book takes no
+shorts at all, because a single name's breakdown tends to mean-revert while the
+tape is rising. When the market is bearish, the model shorts a fresh TREND
+breakdown or a failed bounce (a rally back to TRADE that rolls over), sized by the
+same VIX-scaled short cap.
 </footer></div>
 <script>%s</script>
 """ % (refresh, CSS, _session_label(asof), _universe_label(df), asof, stamp,
@@ -1267,7 +1274,10 @@ so a buy in a panic commits less. Per-name caps scale with it &mdash; calm equit
 reach 15%%, commodities 12%%, fixed income 15%%, FX 18%%; chop and stress a half and a
 third of that; shorts stay small. A position scales in one unit as the signal confirms
 and out one unit on a trim, closing only at the floor. The book runs cash when few
-names qualify and sizes DOWN into high vol by design.</div>
+names qualify and sizes DOWN into high vol by design. Shorts are gated on the
+market: one opens only when the S&amp;P 500 is below its own TREND (a market
+downtrend) &mdash; in an uptrend the book takes no shorts &mdash; and then on a
+fresh TREND breakdown or a failed bounce.</div>
 </td></tr>
 </table></td></tr></table></div>
 """ % (_session_label(asof), _universe_label(df), asof, chips,

@@ -356,7 +356,8 @@ def _days_since_flip(flags: pd.Series):
 
 
 def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
-             edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT):
+             edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT,
+             market_bear=False):
     """One name -> levels, range position, and any triggered signal.
 
     A volatility index gets levels and a direction but never a signal: you cannot
@@ -522,7 +523,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
                       outside_high=bool(spot > hi), outside_low=bool(spot < lo),
                       vol_surge=vol_surge, was_above=was_above, was_below=was_below,
                       is_mac=is_macro(ticker),
-                      trend_age=d_trend, trade_age=d_trade)
+                      trend_age=d_trend, trade_age=d_trade, market_bear=market_bear)
 
     if young and sig:
         why = (why + " " if why else "") + "(short history: %d bars)" % bars
@@ -600,7 +601,7 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
            trade_bull, trend_bull, outside_high=False, outside_low=False,
            vol_surge=False, was_above=False, was_below=False,
            break_low=False, break_high=False, trend_neutral=False, is_mac=False,
-           trend_age=None, trade_age=None):
+           trend_age=None, trade_age=None, market_bear=False):
     """(signal, why) from a name's current state. The only place the ladder lives.
 
     It used to be written twice -- once against closes here and once against live
@@ -637,7 +638,15 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # band exists to stop. The TRADE tier below still runs.
     if trend_neutral:
         broke_trend = recl_trend = False
+    # A bearish TREND break is a long exit, and -- ONLY when the broad market (SPX)
+    # is itself below its TREND -- also a SHORT ENTRY. Gating shorts on the market
+    # regime is the fix for bleeding on shorts in an uptrend: in a rising tape an
+    # individual breakdown just mean-reverts, so we do not short it; in a falling
+    # tape the breakdown tends to continue. This is the discarded breakdown short,
+    # now armed only in a bear market.
     if broke_trend and trend_first:
+        if market_bear:
+            return ADD_SHORT, event + " and the MARKET is bearish - short the breakdown"
         return REMOVE_LONG, event + " - TREND is the position, exit it"
     if recl_trend and trend_first:
         return COVER_SHORT, event + " - TREND reclaimed, close the short"
@@ -656,6 +665,10 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     if broke_trade and trend_bull is None:
         return TRIM_LONG, event + " with TREND neutral - sell some, wait for TREND to pick a side"
     if broke_trade:
+        # Price had bounced above TRADE in a bear TREND and just broke back below --
+        # a failed bounce. Short it only when the market is bearish too.
+        if market_bear:
+            return ADD_SHORT, event + " in a bear TREND, market bearish - short the failed bounce"
         return REMOVE_LONG, event + " with TREND already bearish - exit"
     if recl_trade and trend_bull is False:
         return TRIM_SHORT, event + " with TREND still bearish - buy some back, wait to re-short"
@@ -676,6 +689,8 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
         return COVER_SHORT, event + " - close the short"
     # A TREND event that yielded to a fresher TRADE one still stands behind it.
     if broke_trend:
+        if market_bear:
+            return ADD_SHORT, event + " and the MARKET is bearish - short the breakdown"
         return REMOVE_LONG, event + " - TREND is the position, exit it"
     if recl_trend:
         return COVER_SHORT, event + " - TREND reclaimed, close the short"
@@ -723,9 +738,11 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # before shorting it -- which is the one moment the rally is no longer there to
     # sell. A fresh TRADE reclaim still outranks this from the tier above, so the
     # short is not opened into the reclaim itself, only into what follows it.
+    if sell_high and trend_bull is False and market_bear:
+        return ADD_SHORT, ("high end of RANGE in a bearish TREND, market bearish"
+                           + ("" if trade_bull is False else " (TRADE reclaimed but TREND decides)"))
     if sell_high and trend_bull is False:
-        return ADD_SHORT, ("high end of RANGE in a bearish TREND"
-                           + ("" if trade_bull is False else ", TRADE reclaimed but TREND decides"))
+        return WATCHLIST, "high end of RANGE in a bearish TREND, but the market is not bearish - no short"
     if sell_high and trend_bull:
         return TRIM_LONG, "high end of RANGE in a bullish TREND - take some off"
     if buy_low and trend_bull is False:
@@ -873,6 +890,18 @@ def mark_new(df, state=None):
     return out
 
 
+def market_is_bear(prices, params):
+    """True when the S&P 500 is below its own TREND line -- the regime gate for
+    shorts. We only open shorts in a market downtrend; in an uptrend an individual
+    breakdown mean-reverts and shorting it bleeds. Falls back to False (no shorts)
+    when SPX is unreadable, which is the safe default."""
+    spx = prices.get("^GSPC") if prices else None
+    if spx is None or "Close" not in spx:
+        return False
+    o = evaluate("SPX", spx, params)
+    return bool(o and o.get("trend_bull") is False)
+
+
 def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         edge_break=EDGE_BREAK, fresh_days=FRESH_DAYS, min_range_pct=MIN_RANGE_PCT,
         include_today=False, verbose=True, max_age_hours=None):
@@ -893,8 +922,13 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     # The Yahoo cache holds 12 hours, so a 21:20 settle would otherwise reuse the
     # noon fetch and rebuild the whole book off the PREVIOUS close -- which is
     # exactly what happened on 3 Sep 2026. The settle passes max_age_hours=0.
-    prices = load_prices(sorted(set(feed.values())), params=params, verbose=verbose,
-                         max_age_hours=max_age_hours)
+    prices = load_prices(sorted(set(feed.values())) + ["^GSPC"], params=params,
+                         verbose=verbose, max_age_hours=max_age_hours)
+    market_bear = market_is_bear(prices, params)
+    if verbose:
+        print("market regime: SPX %s TREND -> shorts %s"
+              % ("below" if market_bear else "above/at",
+                 "ARMED" if market_bear else "disarmed"))
 
     # One session for the whole list, and it is the one MOST of the list agrees on --
     # not the newest bar anywhere in it. The VIX and other early-printing instruments
@@ -986,7 +1020,7 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
         eb, es = gauge_edges.get(gauge_for(t), (edge_buy, edge_sell))
         r = evaluate(t, df, params, edge_buy=eb, edge_sell=es,
                      edge_break=edge_break, fresh_days=fresh_days,
-                     min_range_pct=min_range_pct)
+                     min_range_pct=min_range_pct, market_bear=market_bear)
         if r is None:
             missing.append(t)
         else:

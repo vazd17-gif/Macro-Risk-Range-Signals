@@ -141,7 +141,7 @@ code{background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
 <div class="session"><span class="day">Wednesday, 9 September 2026</span>
 <span class="meta">149 ETFs, 47 stocks, 5 vol indices, 17 macro refs</span>
 <span class="meta">levels from the <span class="num">2026-09-08</span> close</span>
-<span class="meta">generated 2026-09-09 21:46</span></div>
+<span class="meta">generated 2026-09-09 21:58</span></div>
 </header>
 <div class="regime"><div class="reg"><div class="k" style="color:var(--dim)">Names</div><div class="v">218</div></div><div class="reg"><div class="k" style="color:#d9a441">TRIM LONGS</div><div class="v">32</div></div><div class="reg"><div class="k" style="color:#ef5350">SELL LONGS</div><div class="v">7</div></div><div class="reg"><div class="k" style="color:#5c9ded">TRIM SHORTS</div><div class="v">10</div></div><div class="reg"><div class="k" style="color:#5c9ded">COVER SHORT</div><div class="v">10</div></div><div class="reg"><div class="k" style="color:#8b94a5">NEUTRAL TREND</div><div class="v">66</div></div></div>
 
@@ -175,6 +175,13 @@ Per-name caps scale with it: calm equities reach 15%, commodities 12%, fixed inc
 position scales in one unit as the signal confirms and out one unit on a trim, closing
 only at the floor. The book runs cash when few names qualify and sizes DOWN into high
 vol by design.
+<br><br>
+<b>Shorts are gated on the market.</b> A short only opens when the S&amp;P 500 is
+below its OWN TREND &mdash; a market downtrend. In an uptrend the book takes no
+shorts at all, because a single name's breakdown tends to mean-revert while the
+tape is rising. When the market is bearish, the model shorts a fresh TREND
+breakdown or a failed bounce (a rally back to TRADE that rolls over), sized by the
+same VIX-scaled short cap.
 </footer></div>
 <script>
 // Scoped to the scan table by id. Unscoped, the portfolio is a table too -- and in
