@@ -900,8 +900,8 @@ an unusually light one (z &le; &minus;2).
 percent of capital. 1 unit = 3%%. A position scales in one unit at a time as the
 signal confirms and scales out one unit on a trim, closing only at the floor &mdash;
 so a trim reduces conviction rather than flattening the name. Caps are per asset
-class: equities 6%%, commodities 4%%, fixed income 10%%, FX 12%%, and shorts run
-smaller than longs (3%% vs 6%%). The book is deliberately not fully invested; the
+class: equities 9%%, commodities 6%%, fixed income 10%%, FX 12%%, and shorts run
+smaller than longs (3%% vs 9%%). The book is deliberately not fully invested; the
 rest is cash.
 </footer></div>
 <script>%s</script>
@@ -1263,8 +1263,8 @@ volume z-score vs the 1-month and vs the 3-month distribution</div>
 Each position shows its size beside the side, as a percent of capital. 1 unit = 3%%.
 A position scales in one unit at a time as the signal confirms and scales out one unit
 on a trim, closing only at the floor &mdash; a trim reduces conviction rather than
-flattening the name. Caps are per asset class: equities 6%%, commodities 4%%, fixed
-income 10%%, FX 12%%, and shorts run smaller than longs (3%% vs 6%%). The book is
+flattening the name. Caps are per asset class: equities 9%%, commodities 6%%, fixed
+income 10%%, FX 12%%, and shorts run smaller than longs (3%% vs 9%%). The book is
 deliberately not fully invested; the rest is cash.</div>
 </td></tr>
 </table></td></tr></table></div>
