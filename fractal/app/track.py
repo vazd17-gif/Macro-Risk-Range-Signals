@@ -146,15 +146,39 @@ def update(session=None, book_csv=None, custom=None, params=None, verbose=True):
     t["cum_pct"] = ((1 + t["day_pct"] / 100.0).cumprod() - 1.0) * 100.0
     t.to_csv(track_path(custom), index=False)
     if verbose:
+        spy = spy_since_inception(t, params)
+        spy_txt = ("  |  SPY %+.2f%%  (%+.2f%% vs SPY)"
+                   % (spy, t["cum_pct"].iloc[-1] - spy)) if spy is not None else ""
         print("[track] %s: %d position(s), %.0f%% deployed, %+.2f%% on the "
-              "session, %+.2f%% since %s" % (session, len(detail), deploy, day_pct,
-              t["cum_pct"].iloc[-1], INCEPTION))
+              "session, %+.2f%% since %s%s" % (session, len(detail), deploy, day_pct,
+              t["cum_pct"].iloc[-1], INCEPTION, spy_txt))
         for a, b, c in detail:
             print("    %-6s %+.2f%%  (%s)" % (a, b, c))
     return t
 
 
 # ------------------------------------------------------------------- reporting
+
+def spy_since_inception(track, params=None):
+    """SPY total return over exactly the sessions the track covers.
+
+    Compounded across the same dates as the book so the comparison is like for
+    like: each tracked session contributes SPY's move that day (prior close to
+    close). Returns None if SPY history is unavailable.
+    """
+    if track is None or track.empty:
+        return None
+    params = params or load_params()
+    d = load_prices(["SPY"], params=params, verbose=False).get("SPY")
+    if d is None or "Close" not in d:
+        return None
+    r = d["Close"].dropna().pct_change()
+    dates = pd.to_datetime(track["date"].astype(str))
+    sel = r.reindex(dates).dropna()
+    if sel.empty:
+        return None
+    return float(((1 + sel).prod() - 1) * 100)
+
 
 def render(track, book_csv=None):
     """A small, plain report. This one goes to the owner only, so it says what the
@@ -165,6 +189,15 @@ def render(track, book_csv=None):
     last = track.iloc[-1]
     cum = float(last["cum_pct"])
     col = "#0b8f6e" if cum >= 0 else "#d33"
+    spy = spy_since_inception(track, book_csv=None) if False else spy_since_inception(track)
+    if spy is not None:
+        vs = cum - spy
+        spy_line = ('<div style="color:#5a6270;font-size:13px;margin:-12px 0 18px">'
+                    'SPY over the same sessions <b>%+.2f%%</b> &middot; '
+                    '<span style="color:%s;font-weight:700">%+.2f%% vs SPY</span></div>'
+                    % (spy, "#0b8f6e" if vs >= 0 else "#d33", vs))
+    else:
+        spy_line = ""
     rows = "".join(
         '<tr><td style="padding:6px 0;border-bottom:1px solid #e6e8ec">%s</td>'
         '<td align="right" style="padding:6px 0;border-bottom:1px solid #e6e8ec;'
@@ -192,6 +225,7 @@ max-width:640px;margin:0 auto;padding:22px;color:#111">
 <div style="font-size:30px;font-weight:700;margin:6px 0 2px;color:%s">%+.2f%%</div>
 <div style="color:#5a6270;font-size:13px;margin-bottom:18px">on total capital since
 inception %s &middot; %d session(s) &middot; %d open now &middot; %.0f%% deployed</div>
+%s
 <table width="100%%" cellpadding="0" cellspacing="0" style="font-size:13px">
 <tr><td style="padding-bottom:6px;color:#8b94a5;font-size:11px;letter-spacing:.05em">SESSION</td>
 <td align="right" style="padding-bottom:6px;color:#8b94a5;font-size:11px">POSITIONS</td>
@@ -210,7 +244,8 @@ and shorts run smaller than longs (max 3%% vs 6%%). The book is not fully invest
 rest is cash, so this is the return on <b>total</b> capital. Sessions before 9 Sep 2026
 are <b>restated</b> at starter sizing (the book was traded binary before then, so no
 ladder history exists). Marked on the full price path; gross of costs.</div></div>""" % (
-    col, cum, INCEPTION, len(track), len(book), deploy_now, rows, detail or "&mdash;", holds)
+    col, cum, INCEPTION, len(track), len(book), deploy_now, spy_line, rows,
+    detail or "&mdash;", holds)
 
 
 def main():
