@@ -5,3 +5,4 @@ date,n_open,day_pct,cum_pct,deploy_pct,detail
 2026-09-04,8,-0.3909,0.42712746804032253,24.0,COLO +0.10% (held); BAC -0.52% (closed); IHF -1.00% (held); COPX -0.65% (held); GDX -2.20% (held); GDXJ -2.49% (held); SILJ -2.19% (held); CRWD -0.87% (held); RSP -0.65% (closed); PSP -1.11% (closed); JPM -1.44% (closed); WEAT +0.00% (opened)
 2026-09-08,5,0.1273,0.5549712013071417,15.0,COLO +1.86% (closed); COPX +4.10% (held); GDX -0.86% (held); GDXJ -1.15% (held); SILJ -0.41% (held); WEAT +1.77% (held); MICC +0.05% (closed); PSP -0.99% (closed); BAC -0.46% (closed); KO +0.33% (closed)
 2026-09-09,5,0.0622,0.6175163933943351,15.0,COPX +0.94% (held); GDX +1.08% (held); GDXJ +1.34% (held); SILJ +1.24% (held); WEAT -2.52% (held)
+2026-09-10,6,-0.5377,0.07649600774706222,18.0,COPX -6.79% (closed); GDX -3.46% (held); GDXJ -3.98% (held); SILJ -4.04% (held); WEAT +1.64% (held); IHF -0.51% (opened); CRWD +0.07% (opened); KO -0.91% (opened); MSFT -0.03% (opened); MICC +0.10% (opened)
