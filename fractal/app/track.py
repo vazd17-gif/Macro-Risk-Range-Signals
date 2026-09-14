@@ -101,7 +101,9 @@ def session_return(session, book_csv=None, params=None, verbose=True):
             continue
         w = P.units_of(r) * upct / 100.0              # fraction of capital in this lot
         rows.append((r.ticker, sign * (to / frm - 1.0) * 100.0,
-                     "opened" if opened_today else ("closed" if closed_today else "held"),
+                     ("round trip" if (opened_today and closed_today)
+                      else "opened" if opened_today
+                      else "closed" if closed_today else "held"),
                      w))
     if not rows:
         return 0.0, []
