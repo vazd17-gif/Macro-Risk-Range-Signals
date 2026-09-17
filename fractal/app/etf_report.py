@@ -326,6 +326,34 @@ def _vol_regime(idx, band=None):
     return tail, col
 
 
+def _dollar_note(df):
+    """Read-only context: what the dollar's TREND means for metals and crypto.
+
+    The dollar is carried as the USD macro row already; this turns its TREND state
+    into the one line Keith would say out loud -- a strong dollar is a headwind for
+    metals and crypto, a weak one a tailwind. It is CONTEXT, never a sizing input:
+    a 3y test (t=4.01) confirmed metals/crypto return ~2x more when the dollar sits
+    below its TREND, but our own TREND filter already holds these names almost only
+    when the dollar is weak (bullish-dollar days were 42% of sessions yet 2% of our
+    metals held-days), so gating on it changed nothing. We show the read, not act on it.
+    """
+    if "is_macro" not in df:
+        return "", "#8b94a5"
+    u = df[(df["is_macro"] == True) & (df["ticker"] == "USD")]
+    if not len(u):
+        return "", "#8b94a5"
+    r = u.iloc[0]
+    if bool(r.get("trend_neutral")):
+        return ("Dollar is sitting on its TREND &mdash; neutral for metals and crypto.",
+                "#8b94a5")
+    if r.get("trend_bull"):
+        return ("Dollar is above its TREND &mdash; a headwind for metals and crypto "
+                "longs. Our TREND filter already leans out of them here.", "#d9a441")
+    return ("Dollar is below its TREND &mdash; a tailwind for metals and crypto longs.",
+            "#0ea37f")
+
+
+
 def _index_rows(idx):
     """(ticker, name, spot, trade, trend, read, colour) per index."""
     out = []
@@ -766,11 +794,15 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
             % (ncol, note, cells))
     mac = _macro_block(df, dark=True)
     if mac:
+        dnote, dcol = _dollar_note(df)
+        dnote_html = (
+            '<div style="color:%s;font-size:12.5px;margin:-2px 0 10px">%s</div>'
+            % (dcol, dnote)) if dnote else ''
         vol_html += (
             '<h2 style="font-size:15px;margin:6px 0 9px;letter-spacing:-.01em">Macro '
             '<span style="color:var(--dim);font-weight:400;font-size:13px">'
             '&middot; indices, yields, FX and commodities &middot; levels only, never a '
-            'position</span></h2>'
+            'position</span></h2>' + dnote_html +
             '<div class="tablewrap" style="margin-bottom:24px">'
             '<table style="min-width:460px"><tbody>%s</tbody></table></div>' % mac)
 
