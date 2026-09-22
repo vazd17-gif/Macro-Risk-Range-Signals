@@ -1405,6 +1405,13 @@ def main(argv=None):
                       "reads the %s close and would reopen what the settle closed. "
                       "Pass --force-sync to override." % (settled, here))
             else:
+                # NOT USED BY AUTOMATION any more. live_update.bat stopped passing
+                # --sync on 22 Sep 2026: intraday opens plus the new state-based
+                # exit manufacture same-day round trips, and over 2 years of hourly
+                # data net of 10bp close-confirmed entries beat this on return
+                # (+103.1% vs +99.7%), Sharpe (2.47 vs 2.17) and drawdown (-7.1% vs
+                # -7.8%) while deploying less and doing 0 round trips against 223.
+                # Reachable only by passing --live --sync by hand, on purpose.
                 P.sync(df, custom=args.portfolio, only_intraday=True)
     book = P.reconcile(df, custom=args.portfolio, live=args.live)
     # A reduction is only real once the lot is off, so both surfaces report it. The
