@@ -307,8 +307,10 @@ def _action(side, sig, at_low, at_high, event):
         # becoming a HOLD -- the book being told to buy and doing nothing.
         if sig == S.ADD_LONG:
             return A_LONG, "buy - %s" % (event or "signal is bullish")
-        if at_high:
-            return A_TRIM, "at the high end of the RANGE - sell some into strength"
+        # An `at_high -> TRIM` fallback used to sit here. It was the sell_high trim
+        # wearing a different hat: it fired whenever a long sat at the range high with
+        # no stronger signal, so deleting that signal alone would have left the book
+        # trimming exactly as before. Removed with it on 22 Sep 2026 -- see decide().
         return A_HOLD, ""
     # short
     if sig == S.COVER_SHORT:

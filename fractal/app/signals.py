@@ -726,8 +726,18 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     if sell_high and trend_bull is False:
         return ADD_SHORT, ("high end of RANGE in a bearish TREND"
                            + ("" if trade_bull is False else ", TRADE reclaimed but TREND decides"))
-    if sell_high and trend_bull:
-        return TRIM_LONG, "high end of RANGE in a bullish TREND - take some off"
+    # A rule used to sit here: `sell_high and trend_bull -> TRIM_LONG`, "high end of
+    # RANGE in a bullish TREND - take some off". It was the most expensive line in the
+    # model. Decomposing our two trims over 3y / 229 names (22 Sep 2026), net of 10bp:
+    # keeping it +51.5% / Sharpe 1.31 / -9.1% DD; removing it +154.0% / 2.20 / -7.4% DD
+    # -- better on return, Sharpe AND drawdown. It won in every one of the four years
+    # and its worst quarter was shallower (-3.98% vs -6.46%), so this is not just a
+    # bull-market artefact, though the sample holds no sustained bear market.
+    # It sold winners into strength while the TREND that justified owning them was
+    # still intact, and the ADD ladder then bought them back higher. The TRADE-break
+    # trim in the tier above is a different rule and tested mildly POSITIVE -- it stays.
+    # at_high is still computed and reported: the range high is context on the track,
+    # it is simply no longer an instruction.
     if buy_low and trend_bull is False:
         return TRIM_SHORT, "low end of RANGE in a bearish TREND - buy some back"
 
