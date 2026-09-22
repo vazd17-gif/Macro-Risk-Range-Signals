@@ -415,6 +415,56 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
             print("  closed %s at %.2f (%s%s) - %+.2f%% since entry"
                   % (df.at[idx, "ticker"], price, why, tag, pnl))
 
+    def _state_exit_pass():
+        """Exit a held lot on its STATE, not on the freshness of a report event.
+
+        `broke_trade` / `broke_trend` only stay true for FRESH_DAYS (3), because the
+        report should not keep crying a break that is no longer news. The book was
+        reading those same flags, so a lot whose break had gone stale had NO reachable
+        exit and could only come off if TREND happened to flip later.
+
+        That is how JPM was still on the book on 22 Sep 2026. It was opened intraday
+        on 11 Sep on a TRADE reclaim that failed by the close; the TRADE break was
+        already 4 sessions old, so `broke_trade` was False from the moment we owned
+        it. It sat 8 sessions below TRADE with no signal at all and came off at -5.1%
+        only when TREND finally broke. Seven of sixteen open lots were in that state.
+
+        Whether a break is fresh NEWS and whether we should still be holding are two
+        different questions, and the book was answering the first one. It now answers
+        the second: below TRADE with TREND intact is a reduction; a bearish TREND is
+        the full exit, which is the ladder's own rule.
+
+        A book rule, not a signal rule -- emitting TRIM_LONG for every name below its
+        TRADE line would fill the report with "sell some" for positions nobody holds.
+        Close pass only, which is what makes it once per session.
+        Backtest 3y / 229 names, net of 10bp: +154.0% / Sharpe 2.20 -> +180.6% / 2.37.
+        """
+        nonlocal df
+        for r in sig_df.itertuples():
+            tk = r.ticker
+            idx = _open_idx(tk, LONG)
+            if idx is None:
+                continue
+            if AUTO_CLOSE.get(getattr(r, "signal", None)) == LONG:
+                continue                      # the main pass already acted on it
+            tb = getattr(r, "trade_bull", None)
+            trn = getattr(r, "trend_bull", None)
+            if tb is None or bool(tb):
+                continue                      # still above TRADE - nothing to do
+            price = float(r.spot)
+            when = getattr(r, "asof", "")
+            u = units_of(df.loc[idx])
+            if trn is False:                  # TREND gone - the ladder says exit
+                _close_lot(idx, price, "below TRADE with TREND bearish - exit "
+                                       "(state, break no longer fresh)", when)
+            elif u <= START_UNITS:
+                _close_lot(idx, price, "still below TRADE - reduce "
+                                       "(state, break no longer fresh)", when)
+            else:
+                _close_lot(idx, price, "still below TRADE - reduce "
+                                       "(state, break no longer fresh)", when,
+                           u_taken=1)
+
     for r in sig_df.itertuples():
         sig = getattr(r, "signal", None)
         tk, price = r.ticker, float(r.spot)
@@ -469,6 +519,10 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
                            "units": START_UNITS, "added": START_UNITS})
             if verbose:
                 print("  opened %s %s at %.2f (%s)" % (side_in, tk, price, sig))
+
+    # State-based exits run after the signal pass, on the close only.
+    if not only_intraday:
+        _state_exit_pass()
 
     save(df, custom)
     if verbose and not (opened or closed):
