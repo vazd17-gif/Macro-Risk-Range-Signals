@@ -297,6 +297,21 @@ def range_flags(pos, edge_buy, edge_sell):
 
 
 FRESH_DAYS = 3       # a break/reclaim counts as an event for this many sessions
+
+# How far below TRADE price has to close before the break is acted on. Similar Set
+# call these "volatility-adjusted break areas" -- IGV, they said on 30 Sep 2026,
+# "needed to get 3.7% below TRADE for me to consider it bearish TRADE rather than a
+# bullish overrun". Their sigma-scaled form was tested and LOST at every width
+# (0.5-2.0 sigma; their own 3.7% on IGV is 2.3 sigma, near the worst), because
+# sigma balloons the buffer exactly in the names and periods where the exit is most
+# needed -- drawdown went -8.2% -> -11.4%. A FLAT 1% is what works, and it works as
+# COST ROBUSTNESS rather than alpha: it gives up a little gross (0bp: +193.5% ->
+# +189.3%) to cut turnover 3457% -> 2471%/yr, so it crosses over at ~5bp and the gap
+# widens with cost (10bp +164.0 -> +168.2, 20bp +137.4 -> +148.6, 30bp +113.5 ->
+# +130.5; Sharpe 1.78 -> 1.94 at 30bp).
+# EXITS ONLY. Entries still use the raw line -- a reclaim is a reclaim the moment
+# price is back above TRADE, and buffering entries too was not what was tested.
+BREAK_BUFFER = 0.01
 # Below this range width an instrument is cash-like and raises no signal. The
 # number is a tradeability floor, not a statistical one: a range this narrow means
 # the edge-to-edge move is smaller than the cost of capturing it.
@@ -397,7 +412,11 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
     d_trade, prev_trade = _days_since_flip(states.get("trade_bull", pd.Series(dtype=object)))
     d_trend, prev_trend = _days_since_flip(states.get("trend_bull", pd.Series(dtype=object)))
 
-    broke_trade = bool(d_trade is not None and d_trade <= fresh_days and trade_bull is False)
+    # A confirmed break: price is below TRADE by more than the buffer. Used for the
+    # exits only -- see BREAK_BUFFER.
+    below_trade = bool(np.isfinite(trade) and trade and spot < trade * (1.0 - BREAK_BUFFER))
+    broke_trade = bool(d_trade is not None and d_trade <= fresh_days
+                       and trade_bull is False and below_trade)
     broke_trend = bool(d_trend is not None and d_trend <= fresh_days and trend_bull is False)
     recl_trade = bool(d_trade is not None and d_trade <= fresh_days and trade_bull is True)
     recl_trend = bool(d_trend is not None and d_trend <= fresh_days and trend_bull is True)
@@ -573,6 +592,7 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         "trend_neutral": bool(trend_neutral),
         "buy_high": bool(buy_high),
         "sell_high": bool(sell_high),
+        "below_trade": bool(below_trade),
         "day_pct": day_pct,
         # Carried so the intraday re-pricer can see a break that happened on an
         # earlier close. Without them it only knows about lines crossed since the

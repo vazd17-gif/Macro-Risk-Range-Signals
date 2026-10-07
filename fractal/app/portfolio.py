@@ -447,10 +447,18 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
                 continue
             if AUTO_CLOSE.get(getattr(r, "signal", None)) == LONG:
                 continue                      # the main pass already acted on it
-            tb = getattr(r, "trade_bull", None)
+            # A CONFIRMED break, not merely the wrong side of the line: price has
+            # to be more than signals.BREAK_BUFFER below TRADE. A bullish overrun
+            # that dips a few basis points under is not a break, and acting on one
+            # was costing us turnover for nothing. Falls back to the raw side if an
+            # older signal frame has no below_trade column.
+            below = getattr(r, "below_trade", None)
+            if below is None:
+                tb = getattr(r, "trade_bull", None)
+                below = (tb is not None) and (not bool(tb))
             trn = getattr(r, "trend_bull", None)
-            if tb is None or bool(tb):
-                continue                      # still above TRADE - nothing to do
+            if not bool(below):
+                continue                      # above TRADE, or inside the buffer
             price = float(r.spot)
             when = getattr(r, "asof", "")
             u = units_of(df.loc[idx])
