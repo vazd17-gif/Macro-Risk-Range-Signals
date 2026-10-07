@@ -81,32 +81,40 @@ def chart(ticker, ohlc, params, vix):
     if not o:
         return None, None
     close = ohlc["Close"].dropna()
-    from ..model import adaptive_ma
+    from ..model import adaptive_ma, range_ewma
     lines = adaptive_ma.compute(close, params)
+    rng = range_ewma.compute(close, params, volume=ohlc.get("Volume"))
     c = close.iloc[-LOOKBACK:]
     trade = lines["trade"].reindex(close.index).iloc[-LOOKBACK:]
     trend = lines["trend"].reindex(close.index).iloc[-LOOKBACK:]
+    rlo = rng["range_low"].reindex(close.index).iloc[-LOOKBACK:]
+    rhi = rng["range_high"].reindex(close.index).iloc[-LOOKBACK:]
     x = np.arange(len(c))
 
     fig, ax = plt.subplots(figsize=(7.4, 3.6), dpi=130)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
-    # The RANGE is a statement about where price trades NEXT, so it is drawn as a
-    # band on the forward edge rather than smeared back over history it never
-    # governed. Tinted by what the model would DO there: buy the low, short the high.
+    # The RANGE drawn as the two series it actually is, not as one band pinned to
+    # the right edge. Every session had its own range, and seeing the envelope
+    # travel with price is the whole point -- it shows the band narrowing before a
+    # move and the low stepping up through an uptrend, neither of which a single
+    # day's bar can tell you. The buy and sell tranches ride along inside it.
     lo, hi = o["range_low"], o["range_high"]
-    span = max(len(c) // 6, 8)
-    ax.axhspan(lo, hi, xmin=1 - span / max(len(c), 1), xmax=1.0,
-               color="#5c9ded", alpha=0.10, zorder=0)
-    buy_top = lo + (hi - lo) * eb
-    sell_bot = hi - (hi - lo) * es
-    ax.axhspan(lo, buy_top, xmin=1 - span / max(len(c), 1), xmax=1.0,
-               color=GREEN, alpha=0.16, zorder=0)
-    ax.axhspan(sell_bot, hi, xmin=1 - span / max(len(c), 1), xmax=1.0,
-               color=RED, alpha=0.13, zorder=0)
-    for y in (lo, hi):
-        ax.hlines(y, len(c) - span, len(c) - 1, color="#5c9ded", lw=0.9, alpha=0.8)
+    # The two bounds get their OWN colours rather than one band colour: the high is
+    # where the model sells, the low is where it buys, so the edge you are near
+    # should say which decision is in front of you. Drawing both in the TRADE blue
+    # made four blue-ish lines nobody could tell apart.
+    buy_top = rlo.values + (rhi.values - rlo.values) * eb
+    sell_bot = rhi.values - (rhi.values - rlo.values) * es
+    ax.fill_between(x, rlo.values, rhi.values, color="#8b94a5", alpha=0.07,
+                    lw=0, zorder=0)
+    ax.fill_between(x, rlo.values, buy_top, color=GREEN, alpha=0.17, lw=0, zorder=0)
+    ax.fill_between(x, sell_bot, rhi.values, color=RED, alpha=0.14, lw=0, zorder=0)
+    ax.plot(x, rhi.values, color=RED, lw=1.0, alpha=0.85, zorder=1,
+            label="RANGE high")
+    ax.plot(x, rlo.values, color=GREEN, lw=1.0, alpha=0.85, zorder=1,
+            label="RANGE low")
 
     ax.plot(x, trade.values, color=BLUE, lw=1.25, label="TRADE", zorder=2)
     ax.plot(x, trend.values, color=AMBER, lw=1.45, label="TREND", zorder=2)
@@ -123,7 +131,7 @@ def chart(ticker, ohlc, params, vix):
     step = max(len(c) // 6, 1)
     ax.set_xticks(list(x[::step]))
     ax.set_xticklabels([d.strftime("%d %b") for d in c.index[::step]])
-    ax.set_xlim(-1, len(c) + span * 0.15)
+    ax.set_xlim(-1, len(c))
 
     # Three stacked rows above the axes: name, then the read and the levels on one
     # line. The title pad has to clear BOTH or they draw on top of each other.
@@ -137,7 +145,7 @@ def chart(ticker, ohlc, params, vix):
             transform=ax.transAxes, fontsize=8, color=DIM, ha="right", va="bottom")
     # Below the axes, not inside: an "upper left" legend lands on the price line
     # whenever a name is falling, which is exactly when you are reading the chart.
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=3,
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=5,
               frameon=False, fontsize=7.5, labelcolor=DIM)
     fig.tight_layout()
     buf = io.BytesIO()
