@@ -1,0 +1,28 @@
+# Underlyings held in the IBKR account, one per line, '#' comments ignored.
+#
+# This file exists because the scheduled job CANNOT read IBKR directly: the
+# brokerage connector is an MCP tool available to Claude in a session, not to a
+# cron'd python process. So the list is persisted here and refreshed on request.
+# Last refreshed from a live account read: 2026-10-07.
+#
+# Every underlying with a non-zero position, stock or option. Zero-position rows
+# in the account (closed legs) are deliberately excluded.
+
+# --- stock positions
+COST
+DT
+EWZ
+EWZS
+FRFHF
+MNTN
+NKE
+NOK
+SDEV
+TLT
+
+# --- option-only underlyings (no stock leg, but real exposure)
+AAPL
+DRAM
+QTUM
+XLF
+XLU
