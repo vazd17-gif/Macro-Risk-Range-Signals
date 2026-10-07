@@ -190,8 +190,10 @@ def build(when_label, names=None, params=None):
              'max-width:800px;margin:0 auto;color:%s">' % INK,
              '<h2 style="font-size:17px;margin:0 0 2px">IBKR book &middot; '
              'TRADE / TREND / RANGE</h2>',
-             '<div style="color:%s;font-size:12.5px;margin-bottom:16px">%s &middot; '
-             '%d name(s) &middot; VIX %.2f</div>' % (DIM, when_label, len(rows), vix)]
+             '<div style="color:%s;font-size:12.5px;margin-bottom:16px">%s &middot; %s '
+             '&middot; %d name(s) &middot; VIX %.2f</div>'
+             % (DIM, when_label, dt.date.today().strftime("%d %B %Y").lstrip("0"),
+                len(rows), vix)]
     for t, o, cid in rows:
         read, col = _read(o)
         pos = 100 * o["pos_in_range"]
@@ -216,7 +218,10 @@ def build(when_label, names=None, params=None):
 def send(html, imgs, when_label, to_addr=OWNER):
     msg = EmailMessage()
     frm = os.environ.get("FRACTAL_SMTP_USER", "")
-    msg["Subject"] = "IBKR levels - %s" % when_label
+    # "IBKR levels - market open, 8 October 2026". The caller passes only the
+    # window; the date is formatted here so every sender spells it the same way.
+    msg["Subject"] = "IBKR levels - %s, %s" % (
+        when_label, dt.date.today().strftime("%d %B %Y").lstrip("0"))
     msg["From"] = frm
     msg["To"] = to_addr
     msg.set_content("This report is HTML. Open in an HTML-capable client.")
@@ -236,7 +241,9 @@ def main(argv=None):
     ap.add_argument("--no-send", action="store_true",
                     help="render and write out/ibkr_charts.html, do not mail it")
     a = ap.parse_args(argv)
-    label = a.label or dt.datetime.now().strftime("%A %d %B %Y, %H:%M")
+    # The window only ("market open" / "market close"). The subject and the page
+    # header add the date themselves.
+    label = a.label or dt.datetime.now().strftime("%H:%M")
     html, imgs, rows = build(label)
     out = repo_path("out", "ibkr_charts.html")
     with io.open(out, "w", encoding="utf-8") as fh:

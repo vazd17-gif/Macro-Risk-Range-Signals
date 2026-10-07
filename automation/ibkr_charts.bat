@@ -20,7 +20,7 @@ if "%LABEL%"=="" set LABEL=update
 echo ================================================== >> "%LOG%" 2>&1
 echo Charts (%LABEL%) started %TODAY% %TIME% >> "%LOG%" 2>&1
 
-python -m fractal.app.position_charts --label "%LABEL% - %TODAY%" >> "%LOG%" 2>&1
+python -m fractal.app.position_charts --label "%LABEL%" >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo CHARTS FAILED %TIME% >> "%LOG%" 2>&1
   endlocal
