@@ -100,16 +100,47 @@ def session_return(session, book_csv=None, params=None, verbose=True):
         if not frm:
             continue
         w = P.units_of(r) * upct / 100.0              # fraction of capital in this lot
+        still_open = (r.status == P.OPEN) or (str(r.exit_date) > str(session))
         rows.append((r.ticker, sign * (to / frm - 1.0) * 100.0,
-                     ("round trip" if (opened_today and closed_today)
-                      else "opened" if opened_today
-                      else "closed" if closed_today else "held"),
-                     w))
+                     opened_today, closed_today, still_open, w))
     if not rows:
         return 0.0, []
-    # return on total capital = sum(weight_i * ret_i); cash (the rest) earns 0
-    day_ret = float(sum(w * (x / 100.0) for _, x, _, w in rows) * 100.0)
-    detail = [(tk, x, tag) for tk, x, tag, _ in rows]
+    # return on total capital = sum(weight_i * ret_i); cash (the rest) earns 0.
+    # Computed PER LOT, which is right: a two-unit position trimmed to one really
+    # did have one unit held and one unit sold, at different prices.
+    day_ret = float(sum(w * (x / 100.0) for _, x, _, _, _, w in rows) * 100.0)
+
+    # The DETAIL line is read as one line per POSITION, so it is aggregated by
+    # ticker rather than by lot. It used to be per-lot, and a trim peels the sold
+    # unit into its own closed row: on 8 Oct 2026 ARKG appeared twice in the same
+    # session, once "(held)" and once "(closed)", and a reader reasonably concluded
+    # the position was gone when it had only been reduced from two units to one.
+    # A partial reduction is now its own word -- "trimmed" -- because "closed" is
+    # the one thing it is not.
+    agg = {}
+    for tk, x, op, cl, so, w in rows:
+        a = agg.setdefault(tk, {"w": 0.0, "wx": 0.0, "op": False, "cl": False,
+                                "so": False})
+        a["w"] += w
+        a["wx"] += w * x
+        a["op"] = a["op"] or op
+        a["cl"] = a["cl"] or cl
+        a["so"] = a["so"] or so
+    detail = []
+    for tk, a in agg.items():
+        x = (a["wx"] / a["w"]) if a["w"] else 0.0
+        if a["op"] and a["cl"] and not a["so"]:
+            tag = "round trip"
+        elif a["cl"] and a["so"]:
+            tag = "trimmed"
+        elif a["cl"]:
+            tag = "closed"
+        elif a["op"]:
+            tag = "opened"
+        else:
+            tag = "held"
+        detail.append((tk, x, tag))
+    detail.sort(key=lambda t: t[0])
     # Deployment and the position count describe the BOOK HELD at the session close
     # -- entry on or before the session and not yet exited that day -- so they match
     # the plain "5 positions x 3% = 15%" reading. The RETURN above still includes
