@@ -560,6 +560,64 @@ def closed_on(session, custom=None):
                 "exit_date", "exit_price", "pnl_pct", "units", "notes"]]
 
 
+def actions_on(session, custom=None):
+    """EVERY change the book made on `session`, not just the exits.
+
+    closed_on() answers "what came off", which is the half of the day that has a
+    realised number attached. But a session also opens positions, adds units to
+    existing ones and reduces others, and none of that showed anywhere: a day where
+    the book bought four names and trimmed one reported only the trim. The reader
+    could not tell an unchanged book from a busy one.
+
+    kind is one of:
+      opened      a lot that did not exist before this session
+      added       a unit put on top of a lot opened earlier
+      trimmed     a unit peeled off while the position stays on the book
+      closed      the last unit off, the position is gone
+      round trip  opened and fully closed inside the same session
+
+    A reducing row carries realised pnl_pct; an opening row has none yet, which is
+    why pnl_pct is NaN there rather than zero -- zero would read as a flat trade.
+    """
+    df = load(custom)
+    cols = ["ticker", "side", "kind", "units", "price", "pnl_pct", "entry_date",
+            "notes"]
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    s_ = str(session)
+    open_now = set(df[df["status"] == OPEN]["ticker"].astype(str))
+    rows = []
+    for r in df[(df["status"] == CLOSED)
+                & (df["exit_date"].astype(str) == s_)].itertuples():
+        sign = 1.0 if r.side == LONG else -1.0
+        ent = float(r.entry_price) if r.entry_price == r.entry_price else 0.0
+        pnl = (100.0 * sign * (float(r.exit_price) / ent - 1.0)) if ent else float("nan")
+        if str(r.entry_date) == s_:
+            kind = "round trip"
+        elif str(r.ticker) in open_now:
+            kind = "trimmed"
+        else:
+            kind = "closed"
+        rows.append((r.ticker, r.side, kind, units_of(r), float(r.exit_price), pnl,
+                     str(r.entry_date), str(getattr(r, "notes", "") or "")))
+    for r in df[df["status"] == OPEN].itertuples():
+        if str(r.entry_date) == s_:
+            kind = "opened"
+        elif str(getattr(r, "last_add", "") or "") == s_:
+            kind = "added"
+        else:
+            continue
+        rows.append((r.ticker, r.side, kind, units_of(r), float(r.entry_price),
+                     float("nan"), str(r.entry_date),
+                     str(getattr(r, "notes", "") or "")))
+    out = pd.DataFrame(rows, columns=cols)
+    if out.empty:
+        return out
+    order = {"opened": 0, "added": 1, "trimmed": 2, "closed": 3, "round trip": 4}
+    out["_o"] = out["kind"].map(order).fillna(9)
+    return out.sort_values(["_o", "ticker"]).drop(columns="_o").reset_index(drop=True)
+
+
 def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
     """Open positions joined to today's signals, with P&L and an action.
 

@@ -77,6 +77,61 @@ def _held(book):
     return set(book["ticker"].astype(str))
 
 
+KIND_COL = {"opened": "#0ea37f", "added": "#5c9ded", "trimmed": "#d9a441",
+            "closed": "#ef5350", "round trip": "#8b94a5"}
+
+
+def _actions_block(acts, dark=True, held=()):
+    """Every change the book made this session, one row each.
+
+    Was exits only. A day that bought four names and trimmed one reported just the
+    trim, so an unchanged book and a busy one looked the same. The kind badge is
+    what carries the meaning now -- OPENED and ADDED have no realised number yet,
+    and printing 0.00% for them would read as a flat trade rather than as a
+    position that has not been measured yet.
+    """
+    if acts is None or not len(acts):
+        return ""
+    held = set(held or ())
+    line, dim = ("var(--line)", "var(--dim)") if dark else ("#e6e8ec", "#8b94a5")
+    rows = []
+    for r in acts.itertuples():
+        kind = str(getattr(r, "kind", "closed"))
+        kc = KIND_COL.get(kind, dim)
+        pnl = getattr(r, "pnl_pct", float("nan"))
+        has_pnl = pnl == pnl
+        if has_pnl:
+            col = ("#0ea37f" if pnl >= 0 else "#ef5350") if dark else (
+                  "#0b8f6e" if pnl >= 0 else "#d33")
+            pnl_txt = '<span style="color:%s;font-weight:700">%+.2f%%</span>' % (col, pnl)
+        else:
+            pnl_txt = '<span style="color:%s">&ndash;</span>' % dim
+        # A trim leaves the name on the book, which is the point of the word, so it
+        # does not need the RE-ENTERED flag. A full close followed by a fresh lot in
+        # the same session does.
+        back = (kind == "closed") and (r.ticker in held)
+        tag = ('<span style="color:#d9a441;font-size:11px;font-weight:700;'
+               'border:1px solid #d9a441;border-radius:3px;padding:1px 5px;'
+               'margin-left:6px">RE-ENTERED</span>') if back else ""
+        note = ('<div style="color:%s;font-size:12px;margin-top:2px">'
+                'realised on the lot that came off &mdash; a new lot is open, so the '
+                'name is still on the book</div>' % dim) if back else ""
+        rows.append(
+            '<tr><td style="padding:7px 0;border-bottom:1px solid %s">'
+            '<span style="font-weight:700">%s</span>%s'
+            '<span style="color:%s;font-size:11px;font-weight:700;letter-spacing:.05em;'
+            'border:1px solid %s;border-radius:3px;padding:1px 5px;margin-left:7px">'
+            '%s</span>%s</td>'
+            '<td align="right" style="padding:7px 0 7px 14px;border-bottom:1px solid %s;'
+            'color:%s;font-size:12.5px;font-variant-numeric:tabular-nums">%du @ %s</td>'
+            '<td align="right" style="padding:7px 0 7px 14px;border-bottom:1px solid %s;'
+            'font-variant-numeric:tabular-nums">%s</td></tr>'
+            % (line, r.ticker, tag, kc, kc, kind.upper(), note,
+               line, dim, int(getattr(r, "units", 1) or 1), _f(r.price),
+               line, pnl_txt))
+    return "".join(rows)
+
+
 def _closed_block(closed, dark=True, held=()):
     """Positions that came off this session, with what they made.
 
@@ -633,7 +688,8 @@ b.setAttribute('aria-pressed',on?'false':'true');apply();};});
 """
 
 
-def render_dashboard(df, params, generated=None, book=None, closed=None):
+def render_dashboard(df, params, generated=None, book=None, closed=None,
+                     actions=None):
     generated = generated or dt.datetime.now()
     asof = df["asof"].max() if len(df) else "-"
     counts = df["signal"].map(S.LABEL).value_counts().to_dict()
@@ -794,15 +850,19 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
                         "Spot", "P&L", "Today", "Days", "Action", "Why"]),
                "".join(prow)))
 
-    if closed is not None and len(closed):
+    if actions is not None and len(actions):
+        real = actions["pnl_pct"].dropna()
+        sub = "&middot; %d" % len(actions)
+        if len(real):
+            sub += " &middot; realised %+.2f%% on the %d that came off" % (
+                real.mean(), len(real))
         pf_html += (
-            '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Closed today '
+            '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">Actions today '
             '<span style="color:var(--dim);font-weight:400;font-size:13px">'
-            '&middot; %d &middot; realised %+.2f%%</span></h2>'
-            '<table style="margin-bottom:24px;width:100%%;max-width:640px">'
+            '%s</span></h2>'
+            '<table style="margin-bottom:24px;width:100%%;max-width:680px">'
             '<tbody>%s</tbody></table>'
-            % (len(closed), closed["pnl_pct"].mean(),
-               _closed_block(closed, dark=True, held=_held(book))))
+            % (sub, _actions_block(actions, dark=True, held=_held(book))))
 
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
              "% to low", "% to high", "TRADE", "TREND",
@@ -1004,7 +1064,8 @@ def _explainer():
         'HOW TO READ THIS</div>%s</div></td></tr>' % rows)
 
 
-def render_newsletter(df, params, generated=None, book=None, closed=None):
+def render_newsletter(df, params, generated=None, book=None, closed=None,
+                      actions=None):
     generated = generated or dt.datetime.now()
     asof = df["asof"].max() if len(df) else "-"
     b = S.buckets(df)
@@ -1048,15 +1109,17 @@ def render_newsletter(df, params, generated=None, book=None, closed=None):
               % (len(book), "".join(items)))
 
     cl = ""
-    if closed is not None and len(closed):
-        realised = closed["pnl_pct"].mean()
+    if actions is not None and len(actions):
+        real = actions["pnl_pct"].dropna()
+        cap = "%d" % len(actions)
+        if len(real):
+            cap += " &middot; %+.2f%% realised" % real.mean()
         cl = ('<tr><td style="padding:20px 0 6px">'
               '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
               'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
-              'CLOSED TODAY &nbsp;(%d &middot; %+.2f%% average)</span></td></tr>'
+              'ACTIONS TODAY &nbsp;(%s)</span></td></tr>'
               '<tr><td><table width="100%%" cellpadding="0" cellspacing="0">%s</table></td></tr>'
-              % (len(closed), realised,
-                 _closed_block(closed, dark=False, held=_held(book))))
+              % (cap, _actions_block(actions, dark=False, held=_held(book))))
     pf = pf + cl
 
     # The neutral state is defined in the explainer and counted in the chip row, so
@@ -1368,10 +1431,17 @@ def main(argv=None):
     stamps = {_a} | ({_n.strftime("%Y-%m-%d")} if _n is not None else set())
     closed = pd.concat([P.closed_on(d, custom=args.portfolio) for d in sorted(stamps)],
                        ignore_index=True)
+    # Every change the book made, not just the exits -- opens and adds were
+    # invisible before, so a day that bought four names and trimmed one reported
+    # only the trim. Same two stamps as `closed`, for the same reason.
+    actions = pd.concat([P.actions_on(d, custom=args.portfolio) for d in sorted(stamps)],
+                        ignore_index=True)
+    if len(actions):
+        actions = actions.drop_duplicates(subset=["ticker", "kind", "price"])
     with open(paths["dashboard"], "w", encoding="utf-8") as fh:
-        fh.write(render_dashboard(df, eff, book=book, closed=closed))
+        fh.write(render_dashboard(df, eff, book=book, closed=closed, actions=actions))
     with open(paths["newsletter"], "w", encoding="utf-8") as fh:
-        fh.write(render_newsletter(df, eff, book=book, closed=closed))
+        fh.write(render_newsletter(df, eff, book=book, closed=closed, actions=actions))
     df.to_csv(paths["csv"], index=False)
 
     if not book.empty:
