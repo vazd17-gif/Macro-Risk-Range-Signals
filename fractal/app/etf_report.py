@@ -523,12 +523,6 @@ body{margin:0;background:var(--bg);color:var(--fg);
   font-weight:600}
 .reg .v{font-size:22px;font-weight:600;margin-top:3px;letter-spacing:-.02em;
   font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
-.alerts{border:1px solid var(--line-2);
-  background:linear-gradient(180deg,var(--panel-2),var(--panel));border-radius:12px;
-  padding:14px 16px;margin-bottom:20px}
-.alerts .hd{font-size:10px;text-transform:uppercase;letter-spacing:.09em;
-  color:var(--dim);font-weight:600;margin-bottom:10px}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{display:inline-flex;align-items:center;gap:8px;text-decoration:none;
   background:var(--panel);border:1px solid var(--line-2);border-radius:9px;
   padding:7px 11px;color:var(--fg);transition:border-color .12s,transform .12s}
@@ -715,61 +709,13 @@ def render_dashboard(df, params, generated=None, book=None, closed=None):
     # Both are transient -- by tonight's close the crossing is just history and the
     # edge has usually been left behind -- which is what makes them worth the top of
     # the screen rather than a column in the table.
-    alerts = []
-    if "intraday" in df:
-        for h in df[df["intraday"].astype(bool)].itertuples():
-            if getattr(h, "is_index", False):
-                label, stance = S.vol_read(cross=h.intraday)
-                col = STANCE_COL.get(stance, FLAT)
-                alerts.append((0, h.ticker, col, label, _f(h.spot), col))
-                continue
-            lost = h.intraday.startswith("lost")
-            alerts.append((0, h.ticker, "#ef5350" if lost else "#5c9ded",
-                           h.intraday, _f(h.spot), _trend_col(h.trend_bull)))
-    # Range-edge chips only on a live build. An alert is something that HAPPENED --
-    # a line cleared during the session. Where price sits in the range is a state,
-    # it is recomputed from every fresh set of levels, and on a close build it is
-    # already the BUY and TRIM sections underneath. Carrying 45 of them into a
-    # settled dashboard made a strip of standing conditions look like a morning's
-    # worth of events that had failed to clear.
-    seen = {a[1] for a in alerts}
-    for h in (df.itertuples() if live_at else ()):
-        if h.ticker in seen or getattr(h, "cash_like", False):
-            continue
-        if getattr(h, "is_index", False):
-            label, stance = S.vol_read(at_low=getattr(h, "at_low", False),
-                                       at_high=getattr(h, "at_high", False))
-            if label:
-                col = STANCE_COL.get(stance, FLAT)
-                alerts.append((1, h.ticker, col, label, _f(h.spot), col))
-            continue
-        if getattr(h, "at_low", False):
-            alerts.append((1, h.ticker, BULL, "at the low end", _f(h.spot),
-                           _trend_col(h.trend_bull)))
-        elif getattr(h, "at_high", False):
-            alerts.append((1, h.ticker, "#d9a441", "at the high end", _f(h.spot),
-                           _trend_col(h.trend_bull)))
+    # The "Happening now" strip used to sit here: a row of chips for every name
+    # that had crossed a line during the session, plus range-edge chips on a live
+    # build. Removed on 8 Oct 2026 -- everything it showed is on the page already,
+    # in the signal sections and the range tracks, and a strip of 100+ chips above
+    # the fold pushed the actual book down the screen.
+    # The separate fractal.app.alerts module is the phone push and is unaffected.
     alerts_html = ""
-    if alerts:
-        alerts.sort(key=lambda a: (a[0], a[1]))
-        chips = "".join(
-            '<a href="#%s" style="text-decoration:none;display:inline-flex;'
-            'align-items:center;gap:7px;background:%s18;border:1px solid %s55;'
-            'border-radius:8px;padding:6px 11px;color:var(--fg)">'
-            '<b style="color:%s">%s</b><span style="color:%s;font-size:12px">%s</span>'
-            '<span style="color:var(--dim);font-size:12px">%s</span></a>'
-            % (tk, col, col, tkcol, tk, col, html.escape(label), spot)
-            for _, tk, col, label, spot, tkcol in alerts)
-        n_cross = sum(1 for a in alerts if a[0] == 0)
-        n_edge = len(alerts) - n_cross
-        bits = []
-        if n_cross:
-            bits.append("%d crossed a line" % n_cross)
-        if n_edge:
-            bits.append("%d at a range edge" % n_edge)
-        alerts_html = ('<div class="alerts"><div class="hd">Happening now '
-                       '&middot; %s</div><div class="chips">%s</div></div>'
-                       % (" &middot; ".join(bits), chips))
 
     idx = df[df["is_index"]] if "is_index" in df else df.iloc[0:0]
     vol_html = ""
