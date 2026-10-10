@@ -43,6 +43,23 @@ AMBER = "#d9a441"
 BLUE = "#5c9ded"
 
 
+def names_refreshed(path=None):
+    """The date the name list was last read off the account, or None.
+
+    Parsed out of the header line rather than the file mtime, because a commit or
+    a checkout touches the mtime without anyone having looked at the account.
+    """
+    import re as _re
+    p = path or repo_path(*NAMES_FILE)
+    try:
+        with io.open(p, encoding="utf-8") as fh:
+            m = _re.search(r"Last refreshed from a live account read:\s*(\d{4}-\d{2}-\d{2})",
+                           fh.read())
+        return dt.date.fromisoformat(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
 def held_names(path=None):
     """The underlyings to chart. Blank lines and '#' comments ignored."""
     p = path or repo_path(*NAMES_FILE)
@@ -186,8 +203,25 @@ def build(when_label, names=None, params=None):
         imgs.append((cid, png))
         rows.append((t, o, cid))
 
+    # SAY SO WHEN THE LIST IS OLD. On 9 Oct 2026 both emails went out against a
+    # list last read on the 7th -- they charted three names that had been closed
+    # and missed one that had been opened -- and nothing on the page said so,
+    # because the charts themselves rendered perfectly. The levels are always
+    # fresh; it is the NAMES that can rot, so that is what gets flagged.
+    ref = names_refreshed()
+    stale = ""
+    if ref is None or ref < dt.date.today():
+        age = "unknown" if ref is None else ("%d day(s) old" % (dt.date.today() - ref).days)
+        stale = ('<div style="background:#fdf1e7;border:1px solid %s;border-radius:8px;'
+                 'padding:10px 13px;margin-bottom:14px;color:%s;font-size:12.5px">'
+                 '<b>Position list is %s</b> &mdash; last read from the account on %s. '
+                 'These are the right levels for the names below, but the names may '
+                 'no longer match the account.</div>'
+                 % (AMBER, INK, age,
+                    "an unknown date" if ref is None else ref.strftime("%d %b %Y")))
+
     parts = ['<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;'
-             'max-width:800px;margin:0 auto;color:%s">' % INK,
+             'max-width:800px;margin:0 auto;color:%s">' % INK, stale,
              '<h2 style="font-size:17px;margin:0 0 2px">IBKR book &middot; '
              'TRADE / TREND / RANGE</h2>',
              '<div style="color:%s;font-size:12.5px;margin-bottom:16px">%s &middot; %s '
