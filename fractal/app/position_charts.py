@@ -44,20 +44,38 @@ BLUE = "#5c9ded"
 
 
 def names_refreshed(path=None):
-    """The date the name list was last read off the account, or None.
+    """When the name list was last read off the account, or None.
 
-    Parsed out of the header line rather than the file mtime, because a commit or
-    a checkout touches the mtime without anyone having looked at the account.
+    Returns a datetime when the header carries a time, else a date. Date-only was
+    not enough: on 13 Oct 2026 the list was read at 06:24, before the session, and
+    the close email at 21:45 passed the check silently because the DATE matched --
+    while charting names that predated the whole trading day. The age in hours is
+    what matters, not the calendar day.
+
+    Parsed from the header line rather than the file mtime, because a commit or a
+    checkout touches mtime without anyone having looked at the account.
     """
     import re as _re
     p = path or repo_path(*NAMES_FILE)
     try:
         with io.open(p, encoding="utf-8") as fh:
-            m = _re.search(r"Last refreshed from a live account read:\s*(\d{4}-\d{2}-\d{2})",
-                           fh.read())
-        return dt.date.fromisoformat(m.group(1)) if m else None
+            txt = fh.read()
+        m = _re.search(r"Last refreshed from a live account read:\s*"
+                       r"(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}):(\d{2}))?", txt)
+        if not m:
+            return None
+        day = dt.date.fromisoformat(m.group(1))
+        if m.group(2) is None:
+            return day
+        return dt.datetime.combine(day, dt.time(int(m.group(2)), int(m.group(3))))
     except Exception:
         return None
+
+
+# How old the list may be before the mail says so. Four hours spans a refresh at
+# the open being used by the open mail, but not a pre-market read being used by
+# the close mail seven hours later.
+STALE_AFTER_HOURS = 4
 
 
 def held_names(path=None):
@@ -210,15 +228,23 @@ def build(when_label, names=None, params=None):
     # fresh; it is the NAMES that can rot, so that is what gets flagged.
     ref = names_refreshed()
     stale = ""
-    if ref is None or ref < dt.date.today():
-        age = "unknown" if ref is None else ("%d day(s) old" % (dt.date.today() - ref).days)
+    age_txt = when_txt = None
+    if ref is None:
+        age_txt, when_txt = "of unknown age", "an unknown date"
+    elif isinstance(ref, dt.datetime):
+        hrs = (dt.datetime.now() - ref).total_seconds() / 3600.0
+        if hrs > STALE_AFTER_HOURS:
+            age_txt = ("%.0f hours old" % hrs) if hrs < 48 else ("%.0f days old" % (hrs / 24))
+            when_txt = ref.strftime("%d %b %Y at %H:%M")
+    elif ref < dt.date.today():
+        d_ = (dt.date.today() - ref).days
+        age_txt, when_txt = "%d day(s) old" % d_, ref.strftime("%d %b %Y")
+    if age_txt:
         stale = ('<div style="background:#fdf1e7;border:1px solid %s;border-radius:8px;'
                  'padding:10px 13px;margin-bottom:14px;color:%s;font-size:12.5px">'
                  '<b>Position list is %s</b> &mdash; last read from the account on %s. '
                  'These are the right levels for the names below, but the names may '
-                 'no longer match the account.</div>'
-                 % (AMBER, INK, age,
-                    "an unknown date" if ref is None else ref.strftime("%d %b %Y")))
+                 'no longer match the account.</div>' % (AMBER, INK, age_txt, when_txt))
 
     parts = ['<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;'
              'max-width:800px;margin:0 auto;color:%s">' % INK, stale,
