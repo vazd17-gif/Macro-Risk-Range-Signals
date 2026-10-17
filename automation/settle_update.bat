@@ -24,12 +24,39 @@ REM Wait for the day's bars before settling anything. On 2026-09-03 this job ran
 REM 20 minutes after the close, the bars had not published, and it settled off the
 REM PREVIOUS close while the P&L track emailed "0 positions, +0.00%" as a real
 REM session. Waiting on the data beats guessing a later clock time.
+REM await_bars exits non-zero for TWO very different reasons, and this used to
+REM treat them as one: the session's bars genuinely never published (benign, wait
+REM for tomorrow), or the process CRASHED. On 16 Oct 2026 it died on `import
+REM pandas` with a MemoryError, the log said "bars never published", the batch
+REM exited 0, and Task Scheduler recorded a success -- while the book never
+REM synced, the P&L track never sent and the dashboard sat on an intraday build.
+REM A crash that reports itself as a quiet skip is the worst kind.
+REM
+REM Retry once in case the machine was briefly short of memory, then tell the two
+REM apart by looking for a traceback, and exit NON-ZERO on a crash so it shows as
+REM a failure in Task Scheduler instead of being swallowed.
+REM
+REM Written flat with GOTO on purpose. The obvious nested-parenthesis version is
+REM wrong: inside a parenthesised block an `if errorlevel` after another command
+REM does not see the value you expect, and a tested version of this silently
+REM returned 0 down the crash path -- which would have defeated the whole point.
 python -m fractal.app.await_bars --minutes 90 >> "%LOG%" 2>&1
-if errorlevel 1 (
-  echo SETTLE SKIPPED - bars never published; intraday dashboard left up >> "%LOG%" 2>&1
-  endlocal
-  exit /b 0
-)
+if not errorlevel 1 goto bars_ok
+echo await_bars failed, retrying once in 120s %TIME% >> "%LOG%" 2>&1
+powershell -NoProfile -Command "Start-Sleep -Seconds 120" >nul 2>&1
+python -m fractal.app.await_bars --minutes 30 >> "%LOG%" 2>&1
+if not errorlevel 1 goto bars_ok
+findstr /C:"Traceback" /C:"MemoryError" "%LOG%" >nul 2>&1
+if errorlevel 1 goto bars_notready
+echo SETTLE ABORTED - await_bars CRASHED, see the traceback above. The book was >> "%LOG%" 2>&1
+echo NOT synced and the track was NOT sent; re-run the settle by hand. >> "%LOG%" 2>&1
+endlocal
+exit /b 1
+:bars_notready
+echo SETTLE SKIPPED - bars never published; intraday dashboard left up >> "%LOG%" 2>&1
+endlocal
+exit /b 0
+:bars_ok
 
 python -m fractal.app.etf_report --settle --sync >> "%LOG%" 2>&1
 if errorlevel 1 (
