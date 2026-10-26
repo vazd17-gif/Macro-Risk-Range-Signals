@@ -1028,17 +1028,30 @@ def run(tickers=None, params=None, profile="hedgeye_anchor", edge=None,
     if out.empty:
         return out
 
-    # One report, one date. A ticker whose last bar is older than the rest is
+    # One report, one date. A ticker whose last bar is well behind the rest is
     # stale (delisted or renamed); it is dropped from signals rather than compared
     # against everyone else's newer prices.
+    #
+    # "Well behind" used to mean "behind at all", which was too strict. Tokyo,
+    # Shanghai and Seoul close hours before the US settle runs and their daily bars
+    # publish later still, so NIKK, SSEC and KOSPI were flagged stale EVERY day
+    # from 22 Oct 2026 on a one-session lag -- while the underlying feeds were
+    # perfectly alive (^N225, 000001.SS and ^KS11 all had the current close when
+    # fetched directly). A market holiday on one exchange does the same thing.
+    #
+    # The tolerance has to stay small enough to still catch the real cases, which
+    # is what this rule exists for: EVZ was eighteen months dead and 2YY=F had
+    # stopped entirely. Those are hundreds of sessions behind, not two.
+    STALE_TOLERANCE_DAYS = 4          # calendar days, so a weekend never trips it
     asof = out["asof"].max()
-    stale = out[out["asof"] < asof]
+    _cut = (pd.Timestamp(asof) - pd.Timedelta(days=STALE_TOLERANCE_DAYS)).strftime("%Y-%m-%d")
+    stale = out[out["asof"] < _cut]
     if len(stale):
         if verbose:
             print("[signals] stale, excluded from signals: "
                   + ", ".join("%s(%s)" % (r.ticker, r.asof) for r in stale.itertuples()))
-        out.loc[out["asof"] < asof, "signal"] = None
-        out.loc[out["asof"] < asof, "why"] = "stale data - last bar " + stale["asof"]
+        out.loc[out["asof"] < _cut, "signal"] = None
+        out.loc[out["asof"] < _cut, "why"] = "stale data - last bar " + stale["asof"]
     out.attrs["asof"] = asof
     out.attrs["edge"] = edge_buy
     out.attrs["edge_buy"] = edge_buy
