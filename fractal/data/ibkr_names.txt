@@ -3,28 +3,21 @@
 # This file exists because the scheduled job CANNOT read IBKR directly: the
 # brokerage connector is an MCP tool available to Claude in a session, not to a
 # cron'd python process. So the list is persisted here and refreshed on request.
-# Last refreshed from a live account read: 2026-10-13 22:10.
+# Last refreshed from a live account read: 2026-10-26 06:40.
 #   (format: YYYY-MM-DD HH:MM local. The chart mail warns when this is
 #    more than 4 hours old, so the TIME matters, not just the date.)
 #
 # Every underlying with a non-zero position, stock or option. Zero-position rows
-# in the account (closed legs) are deliberately excluded. A SHORT counts: INDA is
-# held short, and the chart still shows its levels -- read the signal inverted.
+# in the account (closed legs) are deliberately excluded.
+#
+# 26 Oct 2026: confirmed interactively down to 4 names. The scheduled refresh had
+# been blocked since 20 Oct by its own >50%-drop guard, which could not tell a
+# real liquidation from a partial account read. It was a real liquidation.
 
 # --- stock positions
-COST
-EWZ
-EWZS
-FRFHF
-INDA
-NKE
 NOK
 
 # --- option-only underlyings (no stock leg, but real exposure)
-DRAM
 NVDA
-QTUM
+QQQ
 SMH
-TLT
-XLF
-XLU
