@@ -13,6 +13,11 @@ Infrastructure). It is corrected here rather than silently dropped.
 GXG in the source list is carried as COLO: Global X MSCI Colombia stopped printing
 under GXG on 2026-07-17 and now trades as COLO, which is also the symbol Hedgeye
 and Similar Set use for it.
+
+NCLD (Roundhill Neocloud) listed on 2026-08-06, so it carries well under the 80
+bars `signals.evaluate` requires and is skipped as "no usable history" until
+around 2026-11-27, its 80th session. It is carried from now so that it starts
+scoring on its own the session it qualifies, rather than being remembered later.
 """
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ EWC, EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWW, EZA, EFNL,
 EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GII, GLD, GLIN,
 GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
 ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE, KSA,
-KWEB, KWT, LIT, LQD, MAGS, MTBA, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
+KWEB, KWT, LIT, LQD, MAGS, MTBA, NCLD, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
 PPLT, PSP, PSCU, PSCC, PSCD, PSCH, QQQ, QTUM, RSP, SCJ, SHY, SIL, SILJ,
 SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, SRUUF, TBIL, TAN, TLT, TUR, UAE,
 UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF, XLI, XLK, XLP, XLU,
@@ -122,7 +127,7 @@ GROUPS = {
                      "JETS", "OIH", "PSP", "DESK", "FUTY"],
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],
     "thematic":     ["ARKG", "ARKK", "ARKQ", "CARZ", "CIBR", "SKYY", "QTUM", "DRAM", "XBI",
-                     "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV",
+                     "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV", "NCLD",
                      "AQWA", "PBD", "PINK", "WOOD", "SLX", "GII"],
     "intl":         ["EEM", "EMXC", "KEMX", "EWA", "EWC", "EWG", "EWH", "EWI", "EWJ", "EWJV",
                      "EWN", "EWO", "EWQ", "EWS", "EWY", "EWZ", "EWW", "EZA", "EFNL",

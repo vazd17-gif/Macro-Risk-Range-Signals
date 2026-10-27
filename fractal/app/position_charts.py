@@ -4,7 +4,7 @@ One chart per underlying held in the brokerage account: price over the last six
 months, the two duration lines drawn across it, and the Risk Range band shaded on
 the right where price is actually trading against it. The read a Similar Set mail
 gives you in a picture, for the names that are actually at risk rather than for the
-whole 255-name universe.
+whole universe.
 
 Why the names come from a file rather than from IBKR directly: the brokerage
 connector is an MCP tool available to Claude inside a session, not to a scheduled
