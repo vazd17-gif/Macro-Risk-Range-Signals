@@ -454,6 +454,13 @@ def _macro_block(df, dark=True):
         # The ticker itself carries the TREND colour, the same way it does on the
         # scan and on the alert chips. One glance down the column reads the macro
         # setup without anyone parsing a word at the end of each row.
+        # TRADE and TREND as numbers, not just the direction word. The row used to
+        # end in "bearish" with no sign of WHERE the line was, so a reader could
+        # see that SOX was bearish but not that it was 8.5% under its TRADE -- the
+        # thing that tells you whether a reclaim is near or hopeless. Each line is
+        # tinted by the side price is on, so the pair reads at a glance.
+        tcol = BULL if (r.spot > r.trade) else BEAR
+        ncol = dc if not r.trend_neutral else "#8b94a5"
         rows.append(
             '<tr><td style="padding:6px 0;border-bottom:1px solid %s">'
             '<span style="font-weight:700;color:%s">%s</span>'
@@ -463,10 +470,17 @@ def _macro_block(df, dark=True):
             '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
             'font-variant-numeric:tabular-nums;color:%s">%s &ndash; %s</td>'
             '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
+            'font-variant-numeric:tabular-nums;color:%s">%s</td>'
+            '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
+            'font-variant-numeric:tabular-nums;color:%s">%s</td>'
+            '<td align="right" style="padding:6px 0 6px 14px;border-bottom:1px solid %s;'
             'color:%s;font-weight:650;font-size:12.5px">%s</td></tr>'
             % (line, dc, r.ticker, dim, html.escape(MACRO_NAMES.get(r.ticker, "")),
                line, ink, _f(r.spot),
-               line, dim, _f(r.range_low), _f(r.range_high), line, dc, d))
+               line, dim, _f(r.range_low), _f(r.range_high),
+               line, tcol, _f(r.trade),
+               line, ncol, _f(r.trend),
+               line, dc, d))
     return "".join(rows)
 
 
@@ -806,7 +820,14 @@ def render_dashboard(df, params, generated=None, book=None, closed=None,
             '&middot; indices, yields, FX and commodities &middot; levels only, never a '
             'position</span></h2>' + dnote_html +
             '<div class="tablewrap" style="margin-bottom:24px">'
-            '<table style="min-width:460px"><tbody>%s</tbody></table></div>' % mac)
+            '<table style="min-width:620px"><thead><tr>'
+            '<th style="text-align:left">&nbsp;</th>'
+            '<th style="text-align:right">Spot</th>'
+            '<th style="text-align:right">Range</th>'
+            '<th style="text-align:right">TRADE</th>'
+            '<th style="text-align:right">TREND</th>'
+            '<th style="text-align:right">&nbsp;</th>'
+            '</tr></thead><tbody>%s</tbody></table></div>' % mac)
 
     pf_html = ""
     if book is not None and not book.empty:
