@@ -758,6 +758,34 @@ def decide(is_idx, cash_like, width_pct, broke_trend, broke_trade,
     # trim in the tier above is a different rule and tested mildly POSITIVE -- it stays.
     # at_high is still computed and reported: the range high is context on the track,
     # it is simply no longer an instruction.
+    # Tested for deletion on 2 Nov 2026 and KEPT. The argument for cutting it was
+    # that it is the short-side mirror of the sell-high rule above: it buys back a
+    # WINNING short at the lows, which reads as selling strength. The mirror does
+    # not hold. Sell-high trimmed longs into strength while the TREND that
+    # justified owning them was intact; this fires at the BOTTOM of a range, which
+    # is a mean-reversion setup, not a trend continuation -- so the analogy points
+    # the wrong way and the numbers say so.
+    #
+    # Event study, 3y / 225 names, replaying this ladder bar by bar with the real
+    # gauge-scaled bands: 4386 firings, forward return AFTER the signal +0.20% 1d,
+    # +0.96% 5d, +1.61% 10d, +3.14% 20d, against +0.13 / +0.68 / +1.32 / +2.36 on
+    # bearish-TREND bars generally. Price RISES after it fires, so covering avoids
+    # a bounce rather than giving up profit.
+    #
+    # Two caveats kept deliberately, because they bound what was shown. Firings
+    # cluster in market-wide selloffs, so same-day names are not independent;
+    # collapsed to one observation per date the edge is t=0.21 at 1d, 2.10 at 5d,
+    # 1.52 at 10d, 3.05 at 20d -- convincing only at a horizon far longer than a
+    # daily "buy some back" implies. And this is an event study, not a portfolio
+    # run: it carries no return/Sharpe/drawdown of the kind that justified
+    # deleting sell-high, so it is evidence for leaving a shipped rule alone, not
+    # evidence for changing one.
+    #
+    # Also tested: suppressing this rung when the band fails to contain spot (the
+    # anchor-lag case, 2.4% of name-sessions). Raw means suggested those firings
+    # were twice as good; clustered by date the difference is t=0.94 at 5d and
+    # 0.91 at 20d, i.e. indistinguishable. Gating on it would discard signals no
+    # different from the rest, so the gate was not built.
     if buy_low and trend_bull is False:
         return TRIM_SHORT, "low end of RANGE in a bearish TREND - buy some back"
 
