@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Batch files must check out CRLF regardless of the clone's core.autocrlf.
+# settle_update.bat arrived in a mixed state -- the GOTO block that handles the
+# crash path was bare-LF while the rest of the file was CRLF. cmd.exe tolerated
+# it, but that control flow is the part whose failure costs a session of marks,
+# and "tolerated" is not a property worth depending on.
+*.bat text eol=crlf

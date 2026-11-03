@@ -64,7 +64,7 @@ VIX, VXN, MOVE, GVZ, OVX
 MACRO = """
 SPX, COMPQ, RUT, SOX, NIKK, DAX, SSEC, KOSPI,
 UST2Y, UST10Y, UST30Y,
-USD, WTIC, NATGAS, TTF, GOLD, COPPER, SILVER
+USD, WTIC, NATGAS, GOLD, COPPER, SILVER
 """
 
 # Display ticker -> data-feed symbol, where they differ.
@@ -86,7 +86,25 @@ YF_MAP = {"VIX": "^VIX", "VXN": "^VXN", "MOVE": "^MOVE",
           # changes. It read 4.2000 against a true 4.3609 and understated 2s10s by
           # 19bp. UST2Y now comes from FRED DGS2, the constant-maturity series.
           "UST2Y": "FRED:DGS2", "UST10Y": "^TNX", "UST30Y": "^TYX",
-          "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F", "TTF": "TTF=F",
+          # Dutch TTF gas (European benchmark) was carried here as TTF=F and
+          # removed on 3 Nov 2026. The symbol is RIGHT -- Yahoo resolves it to
+          # "Dutch TTF Natural Gas Calendar", EUR, on NYMEX -- but the feed
+          # serves exactly ONE bar, so the name could never clear the 80-bar
+          # minimum in evaluate() and silently vanished from every dashboard it
+          # was supposedly on. A roster entry that cannot ever score is worse
+          # than no entry: it costs a fetch per run and reads as coverage.
+          #
+          # Checked before removing it, so nobody spends the afternoon again:
+          # TTE=F is an unnamed ALTSYMBOL, FGP.L is FirstGroup plc (a UK bus
+          # company), UNG is Henry Hub in a fund wrapper, and FRED's European
+          # series PNGASEUUSDM is MONTHLY IMF data running two months behind --
+          # none of them is Dutch TTF at a daily frequency. The stale cache
+          # files TTF.csv (a delisted Korean listing, last bar 2022) and
+          # TTF-USD.csv (a crypto token at 2e-05) are leftovers from an earlier
+          # round of the same search and have been deleted.
+          #
+          # Re-add it the day a daily feed exists, not before.
+          "USD": "DX-Y.NYB", "WTIC": "CL=F", "NATGAS": "NG=F",
           "GOLD": "GC=F", "COPPER": "HG=F", "SILVER": "SI=F"}
 
 MACRO_NAMES = {
@@ -97,7 +115,7 @@ MACRO_NAMES = {
     "UST2Y": "2-Year US Treasury Yield", "UST10Y": "10-Year US Treasury Yield",
     "UST30Y": "30-Year US Treasury Yield", "USD": "US Dollar Index",
     "WTIC": "WTI Crude Oil", "NATGAS": "US Natural Gas (Henry Hub)",
-    "TTF": "European Natural Gas (Dutch TTF)", "GOLD": "Gold Spot",
+    "GOLD": "Gold Spot",
     "COPPER": "Copper Spot", "SILVER": "Silver Spot"}
 
 
