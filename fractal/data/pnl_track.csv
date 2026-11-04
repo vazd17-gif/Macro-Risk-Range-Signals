@@ -43,3 +43,4 @@ date,n_open,day_pct,cum_pct,deploy_pct,detail
 2026-10-30,5,0.1347,-1.770973736110193,10.0,AAPL -1.23% (held); DRAM +7.23% (held); EWY +5.52% (held); KWT +0.53% (held); PLTR -6.27% (closed); SHEL +0.95% (held)
 2026-11-02,8,0.0007,-1.7702861329263353,16.0,AAPL -1.83% (held); BNO +0.00% (opened); BP +0.00% (opened); DRAM +3.52% (held); EWY +0.83% (held); KWT +0.96% (held); SHEL -3.45% (held); USO +0.00% (opened)
 2026-11-03,8,-0.1451,-1.9128174477474613,16.0,AAPL -1.90% (closed); BNO +0.24% (held); BP -0.61% (held); DRAM -2.85% (held); EWY -2.27% (held); PR +0.00% (opened); SHEL -0.71% (held); USO +0.83% (held)
+2026-11-04,9,-0.7868,-2.6845674000685826,27.0,BAC +0.00% (opened); BNO -8.64% (closed); BP -4.16% (closed); BURL +0.00% (opened); DRAM +5.31% (held); EWY +1.90% (held); GDX +0.00% (opened); HL +0.00% (opened); KSA +0.00% (opened); KWT -3.78% (closed); PR -6.54% (closed); SHEL -2.25% (held); SIL +0.00% (opened); USO -8.07% (closed)
