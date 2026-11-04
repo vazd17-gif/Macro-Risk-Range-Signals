@@ -3,7 +3,7 @@
 # This file exists because the scheduled job CANNOT read IBKR directly: the
 # brokerage connector is an MCP tool available to Claude in a session, not to a
 # cron'd python process. So the list is persisted here and refreshed on request.
-# Last refreshed from a live account read: 2026-11-02 21:10.
+# Last refreshed from a live account read: 2026-11-04 20:20.
 #   (format: YYYY-MM-DD HH:MM local. The chart mail warns when this is
 #    more than 4 hours old, so the TIME matters, not just the date.)
 #
@@ -18,7 +18,7 @@
 BUXX
 COST
 EWZ
-FRFHF
+EWZS
 GOOG
 KSPI
 NOK
@@ -26,3 +26,4 @@ TLT
 VALE
 
 # --- option-only underlyings (no stock leg, but real exposure)
+SPX

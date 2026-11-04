@@ -29,6 +29,7 @@ import numpy as np
 from . import signals as S
 from . import publish
 from ..data.loader import load_params, load_prices, repo_path
+from ..data.etf_universe import yf_symbol
 
 OWNER = "vazd17@gmail.com"
 NAMES_FILE = ("data", "ibkr_names.txt")
@@ -195,9 +196,16 @@ def build(when_label, names=None, params=None):
     params["range"] = dict(params["range"])
     params["range"].setdefault("active", "hedgeye_anchor")
     names = names or held_names()
+    # The names file holds DISPLAY tickers, which are not always the feed symbol.
+    # Passed straight through, an index leg went to Yahoo as "SPX" -- not a symbol
+    # -- and the chart mail quietly reported it missing instead of drawing the
+    # index the options are written on (seen 4 Nov 2026: 11 of 12 names rendered).
+    # Anything in YF_MAP is exposed to this, so route every name through
+    # yf_symbol and look the frame up by the symbol actually fetched.
+    feed = {t: yf_symbol(t) for t in names}
     # max_age_hours=0 so an open/close run never draws a cached intraday frame.
-    data = load_prices(list(names) + ["^VIX"], params=params, verbose=False,
-                       max_age_hours=0)
+    data = load_prices(sorted(set(feed.values())) + ["^VIX"], params=params,
+                       verbose=False, max_age_hours=0)
     try:
         vix = float(data["^VIX"]["Close"].dropna().iloc[-1])
     except Exception:
@@ -205,7 +213,7 @@ def build(when_label, names=None, params=None):
 
     imgs, rows, missing = [], [], []
     for t in names:
-        x = data.get(t)
+        x = data.get(feed[t])
         if x is None or x["Close"].dropna().empty:
             missing.append(t)
             continue
