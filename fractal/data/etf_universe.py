@@ -30,7 +30,7 @@ GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
 ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE, KSA,
 KWEB, KWT, LIT, LQD, MAGS, MTBA, NCLD, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
 PPLT, PSP, PSCU, PSCC, PSCD, PSCH, QQQ, QTUM, RSP, SCJ, SHY, SIL, SILJ,
-SKYY, SLV, SLX, SMH, SMIN, SPMO, SOYB, SPLV, SPY, SRUUF, TBIL, TAN, TLT, TUR, UAE,
+SKYY, SLV, SLX, SMH, SMIN, SOXL, SPMO, SOYB, SPLV, SPY, SRUUF, TBIL, TAN, TLT, TUR, UAE,
 UGA, UNG, UUP, URA, USO, WEAT, WGMI, WOOD, XHE, XLF, XLI, XLK, XLP, XLU,
 XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 """
@@ -146,6 +146,14 @@ GROUPS = {
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],
     "thematic":     ["ARKG", "ARKK", "ARKQ", "CARZ", "CIBR", "SKYY", "QTUM", "DRAM", "XBI",
                      "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV", "NCLD",
+                     # SOXL is Direxion's 3x daily semiconductor bull fund, added on
+                     # request 4 Nov 2026. Leverage is not new here (DUST is 2x bear,
+                     # YCS 2x inverse yen), but 3x is the most in the book: its sigma,
+                     # and therefore its RANGE width, scales with the leverage, so the
+                     # band is wide in percent terms by construction and is NOT
+                     # comparable to SMH's. Read it against SMH, not against the rest
+                     # of the thematic group.
+                     "SOXL",
                      "AQWA", "PBD", "PINK", "WOOD", "SLX", "GII"],
     "intl":         ["EEM", "EMXC", "KEMX", "EWA", "EWC", "EWG", "EWH", "EWI", "EWJ", "EWJV",
                      "EWN", "EWO", "EWQ", "EWS", "EWY", "EWZ", "EWW", "EZA", "EFNL",
