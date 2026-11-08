@@ -39,12 +39,27 @@ XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 # individually requested symbol. SBSW (Sibanye Stillwater) is one of the latter --
 # a NYSE-listed South African PGM miner, not an index member. Berkshire is carried
 # as BRK-B: the data feed does not recognise the BRK.B form.
+#
+# NOTE for anyone editing the blocks below: _parse() only splits on commas. It
+# does NOT strip comments, so a "#" line placed INSIDE one of these triple-quoted
+# strings becomes a garbage ticker rather than a comment. Notes go here, above.
+#
+# BE, VRT and MELI were added on request 8 Nov 2026, and each was checked against
+# the feed before being trusted: BE is Bloom Energy Corporation (NYSE, fuel
+# cells), VRT is Vertiv Holdings (NYSE, data-centre power and cooling) and MELI
+# is MercadoLibre (NASDAQ, LatAm e-commerce and fintech). All three carry 1506
+# bars, so none is flagged `young`.
+# Two reading notes. BE and VRT are AI-buildout INFRASTRUCTURE, not chips -- the
+# semiconductor cluster is the wrong comparison set for them; CEG, VST, TLN and
+# NEE are closer. And MELI trades near $1,500, several times anything else in
+# this block, so it dominates any chart that plots dollar levels unscaled.
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, GS, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
 AMAT, SNDK, SBSW, SNOW, HL, BURL, TER, DAL, APP, LFST, CRWD, NYT, KR, LULU,
 MICC,
 DKS, JMKE, SHAK, AEO, ABNB, NOK, NKE,
+BE, VRT, MELI,
 MPC, VLO, DINO, VG, GEL, AR, DAR, RRC, MPLX, PSX, SHEL, DVN, COP, PR, CVI, PBR, PBF, CEG, TLN, TGS, PAM, YPF, DK, BP, MTDR, CHRD, XIFR, DKL, VST, ENB, TRP, NEE
 """
 
