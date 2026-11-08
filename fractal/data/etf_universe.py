@@ -53,6 +53,15 @@ XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 # semiconductor cluster is the wrong comparison set for them; CEG, VST, TLN and
 # NEE are closer. And MELI trades near $1,500, several times anything else in
 # this block, so it dominates any chart that plots dollar levels unscaled.
+#
+# CDNS and SNPS were added on request 8 Nov 2026, and likewise checked against
+# the feed: CDNS is Cadence Design Systems, Inc. and SNPS is Synopsys, Inc.,
+# both NASDAQ, USD, 1506 bars, neither flagged `young`. They are the two EDA
+# names -- chip DESIGN software, not chips -- so they sit between the
+# semiconductor cluster (SMH, SOX, and the single names) and software (IGV),
+# and each other is the closest comparison either one has. Expect them to
+# correlate with semis in direction while carrying software-like margins, which
+# is why neither group's range width is a good prior for theirs.
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, GS, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
@@ -60,6 +69,7 @@ AMAT, SNDK, SBSW, SNOW, HL, BURL, TER, DAL, APP, LFST, CRWD, NYT, KR, LULU,
 MICC,
 DKS, JMKE, SHAK, AEO, ABNB, NOK, NKE,
 BE, VRT, MELI,
+CDNS, SNPS,
 MPC, VLO, DINO, VG, GEL, AR, DAR, RRC, MPLX, PSX, SHEL, DVN, COP, PR, CVI, PBR, PBF, CEG, TLN, TGS, PAM, YPF, DK, BP, MTDR, CHRD, XIFR, DKL, VST, ENB, TRP, NEE
 """
 
