@@ -47,3 +47,4 @@ date,n_open,day_pct,cum_pct,deploy_pct,detail
 2026-11-05,7,0.7766,-1.9288157504975256,14.0,BAC +3.62% (held); BDRY +0.00% (opened); BURL +2.95% (held); DRAM +17.96% (closed); EWY +12.59% (closed); GDX -1.37% (closed); HL +3.34% (held); KSA +0.46% (held); PALL +0.00% (opened); SHEL -1.71% (closed); SIL +1.00% (held)
 2026-11-06,6,-0.0546,-1.9823626170977549,12.0,BAC +0.68% (held); BDRY -1.69% (closed); BURL +1.60% (held); HL -2.01% (held); KSA -0.23% (held); PALL +1.54% (held); SIL -2.63% (held)
 2026-11-09,7,-0.3753,-2.35022281019579,14.0,BAC -2.29% (held); BURL -4.22% (held); HL -4.55% (closed); KSA -1.23% (closed); NIKL +0.00% (opened); NLR +0.00% (opened); PALL -1.35% (held); PPLT +0.00% (opened); SIL -5.14% (closed); TUR +0.00% (opened)
+2026-11-10,8,0.2111,-2.1440841305481184,16.0,BAC -0.26% (held); BURL +1.25% (held); NIKL +1.54% (held); NLR +3.64% (held); PALL +0.74% (held); PPLT +2.11% (held); SOYB +0.00% (opened); TUR +1.53% (held)
