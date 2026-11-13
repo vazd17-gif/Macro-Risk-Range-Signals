@@ -22,9 +22,9 @@ scoring on its own the session it qualifies, rather than being remembered later.
 from __future__ import annotations
 
 RAW = """
-AAAU, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BNO, BUXX, BWET, CANE, CIBR, CLOX,
+AAAU, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BNO, BUG, BUXX, BWET, CANE, CIBR, CLOX,
 CARZ, CLOZ, COPX, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
-EWC, EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWW, EZA, EFNL,
+EWC, EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWZS, EWW, EZA, EFNL,
 EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GII, GLD, GLIN,
 GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
 ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE, KSA,
@@ -62,6 +62,33 @@ XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 # and each other is the closest comparison either one has. Expect them to
 # correlate with semis in direction while carrying software-like margins, which
 # is why neither group's range width is a good prior for theirs.
+#
+# DELL, VALE and KSPI were added 13 Nov 2026 after auditing the IBKR account
+# against this universe: every position in the book should be scoreable, and
+# these four plus EWZS were held without being carried. Each was checked
+# against the feed first. DELL is Dell Technologies Inc. (NYSE, USD, 1506
+# bars), VALE is VALE S.A. (NYSE, USD, 1506 bars -- the Brazilian iron-ore ADR,
+# NOT Vale Indonesia or any of the other Vales), and KSPI is Joint Stock
+# Company Kaspi.kz (NASDAQ, USD -- the Kazakh payments and marketplace ADR).
+# Two notes. KSPI carries 708 bars, not 1506: it listed in 2024. That clears
+# the `young` test comfortably (bars < 3 * 64 = 192), so it is NOT flagged, and
+# the EWMA sigma at lam=0.94 only looks back weeks -- but it has never traded
+# through a full risk-off cycle in this dataset, so its RANGE is calibrated on
+# a benign sample. And DELL is in the book as a Mar19'27 500 call with no
+# shares, so the single-name row prices the underlying, not the position.
+#
+# EWZS was added at the same time, to `intl` rather than here: it is the
+# iShares MSCI Brazil Small-Cap ETF (NASDAQ/NGM, USD, 1506 bars), the
+# small-cap sibling of EWZ, which the universe already carries. Read the two
+# together -- the spread between them is the Brazil size factor, and neither
+# one's range width is a good prior for the other's.
+#
+# BUG was added 13 Nov 2026 on request, to `thematic`: Global X Cybersecurity
+# ETF (NASDAQ/NGM, USD, 1506 bars). It is NOT an IBKR holding -- it was asked
+# about separately. The universe already carries CIBR (First Trust
+# Nasdaq Cybersecurity), so these two are each other's closest comparison and
+# should be read as a pair; where they disagree, the disagreement is index
+# construction, not the sector.
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, GS, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
@@ -70,6 +97,7 @@ MICC,
 DKS, JMKE, SHAK, AEO, ABNB, NOK, NKE,
 BE, VRT, MELI,
 CDNS, SNPS,
+DELL, VALE, KSPI,
 MPC, VLO, DINO, VG, GEL, AR, DAR, RRC, MPLX, PSX, SHEL, DVN, COP, PR, CVI, PBR, PBF, CEG, TLN, TGS, PAM, YPF, DK, BP, MTDR, CHRD, XIFR, DKL, VST, ENB, TRP, NEE
 """
 
@@ -169,7 +197,7 @@ GROUPS = {
                      "XTL", "XHE", "XOP", "ITA", "ITB", "IAK", "IHF", "PJP", "KRE",
                      "JETS", "OIH", "PSP", "DESK", "FUTY"],
     "us_smallcap":  ["PSCU", "PSCC", "PSCD", "PSCH"],
-    "thematic":     ["ARKG", "ARKK", "ARKQ", "CARZ", "CIBR", "SKYY", "QTUM", "DRAM", "XBI",
+    "thematic":     ["ARKG", "ARKK", "ARKQ", "CARZ", "CIBR", "BUG", "SKYY", "QTUM", "DRAM", "XBI",
                      "LIT", "TAN", "URA", "NLR", "NIKL", "IVES", "WGMI", "SMH", "IGV", "NCLD",
                      # SOXL is Direxion's 3x daily semiconductor bull fund, added on
                      # request 4 Nov 2026. Leverage is not new here (DUST is 2x bear,
@@ -181,7 +209,7 @@ GROUPS = {
                      "SOXL",
                      "AQWA", "PBD", "PINK", "WOOD", "SLX", "GII"],
     "intl":         ["EEM", "EMXC", "KEMX", "EWA", "EWC", "EWG", "EWH", "EWI", "EWJ", "EWJV",
-                     "EWN", "EWO", "EWQ", "EWS", "EWY", "EWZ", "EWW", "EZA", "EFNL",
+                     "EWN", "EWO", "EWQ", "EWS", "EWY", "EWZ", "EWZS", "EWW", "EZA", "EFNL",
                      "EDEN", "EIS", "EPU", "EPHE", "ENZL", "GREK",
                      "COLO", "GLIN", "INDA", "INDY", "SMIN", "IDX", "JPXN", "SCJ",
                      "KSA", "KWT", "TUR", "UAE", "FXI", "KWEB"],
