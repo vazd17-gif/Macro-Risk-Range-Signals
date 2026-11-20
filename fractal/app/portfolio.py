@@ -57,16 +57,14 @@ OPEN, CLOSED = "open", "closed"
 
 
 # ---- position sizing (Keith McCullough's conviction framework) ----------------
-# 1 unit = UNIT_PCT of capital. A position scales IN one unit at a time as the
-# signal confirms, and scales OUT one unit at a time on a trim, closing only at the
-# floor. This is the shape a backtest showed beats equal-weight per dollar deployed
-# (+95% vs +83%, Sharpe 0.95 vs 0.88 over 3y) -- see the momentum/sizing work.
+# 1 unit = unit_pct(vix, side) of capital. A position scales IN one unit at a time
+# as the signal confirms, and scales OUT one unit at a time on a trim, closing only
+# at the floor. (The 9 Sep claim that this shape beats equal-weight per dollar was
+# measured on a harness that dropped P&L on partial trims -- treat it as unproven.)
 #
 # Caps are per-asset-class RISK BUDGETS, expressed as a max % and converted to whole
-# units. Longs run bigger than shorts by design (equities 2-6% long vs 1-3% short),
-# which matches where our own signals are weakest. Every budget is a whole multiple
-# of the 3% unit: shorts 3% (1 unit), commodities 6% (2), equities and fixed income
-# 9% (3), FX 12% (4). Nothing rounds.
+# units. Longs run bigger than shorts by design, which matches where our own
+# signals are weakest. A long's size is also scaled by its momentum tilt (below).
 # The unit and the caps SCALE WITH THE VIX. A 3-year backtest showed fixed sizing
 # leverages the book to ~198% of capital in a broad selloff (dozens of names hit
 # their range lows at once and all fire buys), and 2025 -- the crash year -- was
@@ -78,15 +76,36 @@ OPEN, CLOSED = "open", "closed"
 # deliberately the LARGEST -- that is when it is safe to size up toward fully
 # invested; stress caps are a third of that.
 START_UNITS = 1
-UNIT_BY_REGIME = {"calm": 3.0, "chop": 2.0, "stress": 1.0}
+# STEEPER VIX SCHEDULE FOR LONGS (adopted 2026-11-17). Was calm 3 / chop 2 / stress 1.
+# Corrected harness, 3y / 243 names, net 10bp, alone: alpha vs the old schedule
+# +8.2%/yr (t 2.66) in the 2025-26 held-out half, Sharpe 1.87 -> 2.21. A flatter
+# schedule (3/2.5/2) LOST 7.2%/yr (t -2.59) -- the VIX scaling is real and leaning
+# into it helps. Shorts keep the old schedule: neither change was tested on shorts.
+UNIT_BY_REGIME = {"calm": 4.0, "chop": 2.0, "stress": 0.5}
+SHORT_UNIT_BY_REGIME = {"calm": 3.0, "chop": 2.0, "stress": 1.0}
+# Long caps restated so the unit COUNTS are exactly what was tested (calm 5/4/5/6,
+# chop 3/2/3/4, stress 3/2/3/4 units); shorts stay one unit.
 CAP_BY_REGIME = {
-    "calm":   {"equity": 15.0, "commodity": 12.0, "fixed_income": 15.0,
-               "fx_crypto": 18.0, "short": 3.0},
+    "calm":   {"equity": 20.0, "commodity": 16.0, "fixed_income": 20.0,
+               "fx_crypto": 24.0, "short": 3.0},
     "chop":   {"equity": 6.0,  "commodity": 4.0,  "fixed_income": 6.0,
                "fx_crypto": 8.0,  "short": 2.0},
-    "stress": {"equity": 3.0,  "commodity": 2.0,  "fixed_income": 3.0,
-               "fx_crypto": 4.0,  "short": 1.0},
+    "stress": {"equity": 1.5,  "commodity": 1.0,  "fixed_income": 1.5,
+               "fx_crypto": 2.0,  "short": 1.0},
 }
+# Every backtest ran with a 100% gross cap; the live book had none. With 4% calm units
+# and the momentum tilt below, an uncapped book could lever up in a calm tape.
+MAX_GROSS = 100.0
+
+# MOMENTUM TILT ON LONGS (adopted 2026-11-17). A long's size is multiplied by 1.5 when
+# its 12-month return ranks in the top third of the universe, 0.5 in the bottom third,
+# 1.0 between; re-read every session, so the weight follows the rank. Alone: alpha
+# +8.9%/yr (t 2.55) in 2025-26. WITH the steeper schedule: +17.0%/yr (t 2.93) in
+# 2025-26 and +12.2%/yr (t 2.51) in 2023-24 -- but beta 1.28, ~95% deployed and max DD
+# -12.7% vs -8.4%. Part of the gain is more exposure, and it is in-sample on a window
+# that has absorbed ~30 decisions; the live track is the real test.
+MOM_LOOKBACK = 252
+MOM_TILT = {"top": 1.5, "mid": 1.0, "bottom": 0.5}
 UNIT_PCT = UNIT_BY_REGIME["calm"]     # legacy default (calm) for callers without a VIX
 
 _VIX_CACHE = {}
@@ -116,9 +135,10 @@ def current_vix():
     return _VIX_CACHE[key]
 
 
-def unit_pct(vix=None):
+def unit_pct(vix=None, side=LONG):
     """% of capital in one unit, for the VIX regime (current VIX if not given)."""
-    return UNIT_BY_REGIME[regime_of(current_vix() if vix is None else vix)]
+    table = SHORT_UNIT_BY_REGIME if side == SHORT else UNIT_BY_REGIME
+    return table[regime_of(current_vix() if vix is None else vix)]
 
 
 def _cap_key(ticker):
@@ -126,17 +146,82 @@ def _cap_key(ticker):
     return g if g in ("commodity", "fixed_income", "fx_crypto") else "equity"
 
 
-def max_units(ticker, side, vix=None):
-    """Ceiling in whole units for this name and side, in the current VIX regime."""
+def max_units(ticker, side, vix=None, mult=1.0):
+    """Ceiling in whole units for this name and side, in the current VIX regime.
+
+    A tilted long's units are bigger (or smaller), so its cap in units shrinks (or
+    grows) to keep the same % budget -- as tested.
+    """
     reg = regime_of(current_vix() if vix is None else vix)
-    cap = (CAP_BY_REGIME[reg]["short"] if side == SHORT
-           else CAP_BY_REGIME[reg][_cap_key(ticker)])
-    return max(1, int(round(cap / UNIT_BY_REGIME[reg])))
+    if side == SHORT:
+        return max(1, int(round(CAP_BY_REGIME[reg]["short"] / SHORT_UNIT_BY_REGIME[reg])))
+    base = max(1, int(round(CAP_BY_REGIME[reg][_cap_key(ticker)] / UNIT_BY_REGIME[reg])))
+    return max(1, int(round(base / (mult or 1.0))))
 
 
-def size_pct(units, vix=None):
-    """A position's exposure: units x the current regime's unit size."""
-    return float(units) * unit_pct(vix)
+_MOM_CACHE = {}
+
+
+def momentum_ranks(asof=None, params=None):
+    """12-month return of every scored name, as a percentile rank (0-1) at `asof`.
+
+    The universe is every non-index, non-macro name -- the same set the backtest
+    ranked. Cached per process and date; a name without 12 months of history is
+    simply absent and gets no tilt.
+    """
+    key = str(asof) if asof else "latest"
+    if key in _MOM_CACHE:
+        return _MOM_CACHE[key]
+    from ..data.etf_universe import all_etfs, is_index, is_macro, yf_symbol
+    names = [t for t in all_etfs() if not is_index(t) and not is_macro(t)]
+    feed = {t: yf_symbol(t) for t in names}
+    try:
+        px = load_prices(sorted(set(feed.values())), params=params, verbose=False)
+    except Exception:
+        _MOM_CACHE[key] = pd.Series(dtype=float)
+        return _MOM_CACHE[key]
+    cl = {}
+    for t in names:
+        d = px.get(feed[t])
+        if d is not None and "Close" in d:
+            c = d["Close"].dropna()
+            if len(c):
+                cl[t] = c
+    cf = pd.DataFrame(cl).sort_index().ffill(limit=5)
+    if asof is not None:
+        cf = cf.loc[:pd.Timestamp(asof)]
+    if len(cf) <= MOM_LOOKBACK:
+        r = pd.Series(dtype=float)
+    else:
+        r = (cf.iloc[-1] / cf.shift(MOM_LOOKBACK).iloc[-1] - 1.0).dropna().rank(pct=True)
+    _MOM_CACHE[key] = r
+    return r
+
+
+def momentum_mult(ticker, side=LONG, asof=None):
+    """Size multiplier from the momentum tilt: 1.5 / 1.0 / 0.5 by tercile. Longs only."""
+    if side == SHORT:
+        return 1.0
+    r = momentum_ranks(asof).get(ticker, np.nan)
+    if r != r:
+        return 1.0
+    if r >= 2.0 / 3.0:
+        return MOM_TILT["top"]
+    if r < 1.0 / 3.0:
+        return MOM_TILT["bottom"]
+    return MOM_TILT["mid"]
+
+
+def size_pct(units, vix=None, side=LONG, mult=1.0):
+    """A position's exposure: units x the regime's unit size x any momentum tilt."""
+    return float(units) * unit_pct(vix, side) * float(mult)
+
+
+def lot_pct(row, vix=None, asof=None):
+    """% of capital in one lot (a row of the book), tilt included."""
+    side = getattr(row, "side", None) if not hasattr(row, "get") else row.get("side")
+    tk = getattr(row, "ticker", None) if not hasattr(row, "get") else row.get("ticker")
+    return size_pct(units_of(row), vix, side, momentum_mult(tk, side, asof))
 
 
 def units_of(row):
@@ -490,12 +575,22 @@ def sync(sig_df: pd.DataFrame, custom=None, verbose=True, only_intraday=False):
                     _close_lot(idx, price, sig, when, u_taken=1)  # trim one unit
 
         side_in = AUTO_OPEN.get(sig)                  # a buy/short for this side
-        if side_in is None or _held_side(tk) == side_in and                 units_of(df.loc[_open_idx(tk, side_in)]) >= max_units(tk, side_in):
+        if side_in is None or _held_side(tk) == side_in and                 units_of(df.loc[_open_idx(tk, side_in)]) >= max_units(
+                    tk, side_in, mult=momentum_mult(tk, side_in)):
             continue                                  # nothing to do / already at cap
         idx = _open_idx(tk, side_in)
         other = _open_idx(tk)
         if idx is None and other is not None:         # holding the other way: flip
             _close_lot(other, price, "%s - flipping to %s" % (sig, side_in), when)
+        # GROSS CAP. Every backtest held the book to 100% of capital; without it the
+        # 4% calm unit and the momentum tilt could lever the book in a calm tape.
+        inc = size_pct(1, None, side_in, momentum_mult(tk, side_in))
+        gross = sum(lot_pct(q) for q in df[df["status"] == OPEN].itertuples())
+        if gross + inc > MAX_GROSS + 1e-9:
+            if verbose:
+                print("  skipped %s %s - book at %.0f%% gross, cap %.0f%%"
+                      % (side_in, tk, gross, MAX_GROSS))
+            continue
         if idx is not None:                           # scale IN one unit
             # ONCE PER SESSION. The live job re-syncs every few minutes, so a
             # persistent ADD signal would otherwise ladder the same position on
@@ -640,7 +735,7 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         if p.ticker not in s.index:
             rows.append({"ticker": p.ticker, "side": p.side, "entry_date": p.entry_date,
                          "entry_price": float(p.entry_price), "shares": p.shares,
-                         "units": units_of(p), "size_pct": size_pct(units_of(p)),
+                         "units": units_of(p), "size_pct": lot_pct(p),
                          "spot": np.nan, "pnl_pct": np.nan,
                          "day_pct": np.nan, "days_held": np.nan,
                          "range_low": np.nan, "range_high": np.nan, "pos_in_range": np.nan,
@@ -678,7 +773,7 @@ def reconcile(sig_df: pd.DataFrame, custom=None, live=False) -> pd.DataFrame:
         rows.append({
             "ticker": p.ticker, "side": p.side, "entry_date": p.entry_date,
             "entry_price": entry, "shares": p.shares,
-            "units": units_of(p), "size_pct": size_pct(units_of(p)), "spot": spot,
+            "units": units_of(p), "size_pct": lot_pct(p), "spot": spot,
             "pnl_pct": 100 * pnl, "day_pct": day, "days_held": held,
             "range_low": float(r["range_low"]), "range_high": float(r["range_high"]),
             "pos_in_range": float(r["pos_in_range"]),
