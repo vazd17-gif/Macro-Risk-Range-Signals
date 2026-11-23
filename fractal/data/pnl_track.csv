@@ -56,3 +56,4 @@ date,n_open,day_pct,cum_pct,deploy_pct,detail
 2026-11-18,5,0.1519,-1.0684395819379078,10.0,BAC +1.07% (held); DAR +1.68% (held); NLR +1.55% (held); PALL +2.16% (held); SOYB +1.12% (held)
 2026-11-19,5,0.0729,-0.996318474393143,4.5,BAC +0.70% (held); DAR -0.15% (held); LFST +0.00% (opened); LLY +0.00% (opened); NLR +2.65% (closed); PALL +3.55% (closed); SOYB +0.55% (held)
 2026-11-20,4,0.0771,-0.919986635936898,3.5,BAC +3.07% (closed); DAR +2.67% (held); LFST +3.60% (held); LLY -0.30% (held); SOYB -0.51% (held)
+2026-11-23,4,0.1634,-0.7580898941000225,10.0,DAR +0.16% (held); LFST +4.49% (held); LLY +1.30% (held); SOYB -0.66% (held)
