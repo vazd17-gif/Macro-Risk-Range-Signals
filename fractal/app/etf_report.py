@@ -481,6 +481,11 @@ def _trend_change_block(df, dark=True):
     dim = "var(--dim)" if dark else "#8b94a5"
     line = "var(--line)" if dark else "#e6e8ec"
     body = "#cfd4dc" if dark else "#5a6270"
+    # The name under the ticker, not the group: "Amazon.com" tells you what moved,
+    # "S&P 500 Stocks" only tells you which bucket the row came from, which the
+    # section is not sorted by anyway. The group stays as the fallback for the
+    # handful with no name on file -- a synthetic macro symbol like UST2Y has none.
+    nm = short_names()
     rows = []
 
     def block(label, rs):
@@ -515,7 +520,8 @@ def _trend_change_block(df, dark=True):
                 '<td align="right" style="padding:5px 0 5px 8px;border-bottom:1px solid %s;'
                 'color:%s;vertical-align:top;white-space:nowrap;'
                 'font-variant-numeric:tabular-nums">%+.2f%%</td></tr>'
-                % (line, tc, r.ticker, dim, GROUP_LABEL.get(r.group, r.group),
+                % (line, tc, r.ticker, dim,
+                   html.escape(nm.get(r.ticker) or GROUP_LABEL.get(r.group, r.group)),
                    line, fc, r.trend_call_prev, dim, tc, r.trend_call,
                    line, mc, mv))
 

@@ -2,42 +2,70 @@ ticker,name
 AAAU,Goldman Sachs Physical Gold ETF
 AAPL,Apple Inc.
 ABBV,AbbVie Inc.
+ABNB,"Airbnb, Inc."
+AEO,"American Eagle Outfitters, Inc."
 AMAT,"Applied Materials, Inc."
 AMD,"Advanced Micro Devices, Inc."
 AMZN,"Amazon.com, Inc."
+APP,AppLovin Corporation
 AQWA,Global X Clean Water ETF
+AR,Antero Resources Corporation
 ARKG,ARK Genomic Revolution ETF
 ARKK,ARK Innovation ETF
 ARKQ,ARK Autonomous Technology & Robotics ETF
 AVGO,Broadcom Inc.
+B,Barrick Mining Corporation
 BAC,Bank of America Corporation
 BBN,BlackRock Taxable Municipal Bond Trust
 BDRY,Breakwave Dry Bulk Shipping ETF
+BE,Bloom Energy Corporation
 BNO,"United States Brent Oil Fund, LP"
+BP,BP p.l.c.
 BRK-B,Berkshire Hathaway Inc.
+BUG,Global X Cybersecurity ETF
+BURL,"Burlington Stores, Inc."
 BUXX,Strive Enhanced Income Short Maturity ETF
 BWET,Breakwave Tanker Shipping ETF
 CANE,Teucrium Sugar Fund
+CARZ,First Trust S-Network Future Vehicles & Technology ETF
 CAT,Caterpillar Inc.
+CDNS,"Cadence Design Systems, Inc."
+CEG,Constellation Energy Corporation
+CHRD,Chord Energy Corporation
 CIBR,First Trust NASDAQ Cybersecurity ETF
 CLOX,Eldridge AAA CLO ETF
 CLOZ,Eldridge BBB-B CLO ETF
 COLO,Global X MSCI Colombia ETF
+COMPQ,NASDAQ Composite
+COP,ConocoPhillips
+COPPER,Copper Mar 27
 COPX,Global X Copper Miners ETF
 CORN,Teucrium Corn Fund
 COST,Costco Wholesale Corporation
 CPER,"United States Copper Index Fund, LP"
+CRWD,"CrowdStrike Holdings, Inc."
 CSCO,"Cisco Systems, Inc."
+CVI,"CVR Energy, Inc."
 CVX,Chevron Corporation
+DAL,"Delta Air Lines, Inc."
+DAR,Darling Ingredients Inc.
+DAX,DAX P
 DBC,Invesco DB Commodity Index Tracking Fund
+DELL,Dell Technologies Inc.
 DESK,Vaneck Office And Commercial REIT ETF
+DINO,HF Sinclair Corporation
+DK,"Delek US Holdings, Inc."
+DKL,"Delek Logistics Partners, LP"
+DKS,"DICK'S Sporting Goods, Inc."
 DRAM,Roundhill Memory ETF
 DUST,Direxion Daily Gold Miners Index Bear 2X Shares
+DVN,Devon Energy Corporation
 EDEN,iShares MSCI Denmark ETF
 EEM,iShares MSCI Emerging Markets ETF
 EFNL,iShares MSCI Finland ETF
 EIS,iShares MSCI Israel ETF
 EMXC,iShares MSCI Emerging Markets ex China ETF
+ENB,Enbridge Inc.
 ENZL,iShares MSCI New Zealand ETF
 EPHE,iShares MSCI Philippines ETF
 EPU,iShares MSCI Peru ETF
@@ -55,8 +83,10 @@ EWS,iShares MSCI Singapore ETF
 EWW,iShares MSCI Mexico ETF
 EWY,iShares MSCI South Korea ETF
 EWZ,iShares MSCI Brazil ETF
+EWZS,iShares MSCI Brazil Small-Cap ETF
 EZA,iShares MSCI South Africa ETF
 FCG,First Trust Natural Gas ETF
+FTNT,"Fortinet, Inc."
 FUTY,Fidelity MSCI Utilities Index ETF
 FXB,Invesco CurrencyShares British Pound Sterling Trust
 FXC,Invesco CurrencyShares Canadian Dollar Trust
@@ -65,14 +95,20 @@ FXI,iShares China Large-Cap ETF
 FXY,Invesco CurrencyShares Japanese Yen Trust
 GDX,VanEck Gold Miners ETF
 GDXJ,VanEck Junior Gold Miners ETF
+GDXU,MicroSectors Gold Miners 3X Leveraged ETNs
+GEL,"Genesis Energy, L.P."
 GII,State Street SPDR S&P Global Infrastructure ETF
 GLD,SPDR Gold Shares
 GLIN,VanEck India Growth Leaders ETF
+GOLD,Gold Dec 26
 GOOG,Alphabet Inc.
 GOOGL,Alphabet Inc.
 GREK,Global X MSCI Greece ETF
 GRNY,Fundstrat Granny Shots US Large Cap ETF
+GS,"The Goldman Sachs Group, Inc."
+GVZ,CBOE Gold Volatility Index
 HBDC,Hilton Bdc Corporate Bond ETF
+HL,Hecla Mining Company
 HYG,iShares iBoxx $ High Yield Corporate Bond ETF
 IAK,iShares U.S. Insurance ETF
 IBIT,iShares Bitcoin Trust ETF
@@ -92,81 +128,133 @@ IWC,iShares Micro-Cap ETF
 IWM,iShares Russell 2000 ETF
 IWO,iShares Russell 2000 Growth ETF
 JETS,U.S. Global Jets ETF
+JMKE,Jersey Mike's Subs Inc.
 JNJ,Johnson & Johnson
 JNK,State Street SPDR Bloomberg High Yield Bond ETF
 JPM,JPMorgan Chase & Co.
 JPXN,iShares JPX-Nikkei 400 ETF
 KEMX,KraneShares MSCI Emerging Markets ex China Index ETF
 KO,The Coca-Cola Company
+KOSPI,KOSPI Composite Index
+KR,The Kroger Co.
 KRE,State Street SPDR S&P Regional Banking ETF
 KSA,iShares MSCI Saudi Arabia ETF
+KSPI,Joint Stock Company Kaspi.kz
 KWEB,KraneShares CSI China Internet ETF
 KWT,iShares MSCI Kuwait ETF
+LFST,"LifeStance Health Group, Inc."
 LIT,Global X Lithium & Battery Tech ETF
 LLY,Eli Lilly and Company
 LQD,iShares iBoxx $ Investment Grade Corporate Bond ETF
 LRCX,Lam Research Corporation
+LULU,lululemon athletica inc.
 MA,Mastercard Incorporated
 MAGS,Roundhill Magnificent Seven ETF
+MELI,"MercadoLibre, Inc."
 META,"Meta Platforms, Inc."
+MICC,The Magnum Ice Cream Company N.V.
 MOVE,Northern Trust iBoxx 5-Year Tar
+MPC,Marathon Petroleum Corporation
+MPLX,MPLX LP
 MSFT,Microsoft Corporation
 MTBA,Simplify MBS ETF
+MTDR,Matador Resources Company
 MU,"Micron Technology, Inc."
+NATGAS,Natural Gas Jan 27
+NCLD,Roundhill Neocloud ETF
+NEE,"NextEra Energy, Inc."
+NEM,Newmont Corporation
+NIKK,Nikkei 225
 NIKL,Sprott Nickel Miners ETF
+NKE,"NIKE, Inc."
 NLR,VanEck Uranium and Nuclear ETF
+NOK,Nokia Oyj
 NVDA,NVIDIA Corporation
+NYT,The New York Times Company
 OIH,VanEck Oil Services ETF
 ORCL,Oracle Corporation
+OVX,CBOE Crude Oil Volatility Index
 PALL,abrdn Physical Palladium Shares ETF
+PAM,Pampa Energía S.A.
+PANW,"Palo Alto Networks, Inc."
 PBD,Invesco Global Clean Energy ETF
+PBF,PBF Energy Inc.
+PBR,Petróleo Brasileiro S.A. - Petrobras
 PINK,Simplify Health Care ETF
 PJP,Invesco Pharmaceuticals ETF
 PLTR,Palantir Technologies Inc.
 PPLT,abrdn Physical Platinum Shares ETF
+PR,Permian Resources Corporation
 PSCC,Invesco S&P SmallCap Consumer Staples ETF
 PSCD,Invesco S&P SmallCap Consumer Discretionary ETF
 PSCH,Invesco S&P SmallCap Health Care ETF
 PSCU,Invesco S&P SmallCap Utilities & Communication Services ETF
 PSP,Invesco Global Listed Private Equity ETF
+PSX,Phillips 66
 QQQ,Invesco QQQ Trust
 QTUM,Defiance Quantum ETF
+RRC,Range Resources Corporation
 RSP,Invesco S&P 500 Equal Weight ETF
+RUT, Russell 2000 Index
 SBSW,Sibanye Stillwater Limited
 SCJ,iShares MSCI Japan Small-Cap ETF
+SHAK,Shake Shack Inc.
+SHEL,Shell plc
 SHY,iShares 1-3 Year Treasury Bond ETF
 SIL,Global X Silver Miners ETF
 SILJ,Amplify Junior Silver Miners ETF
+SILVER,Silver Dec 26
 SKYY,First Trust Cloud Computing ETF
 SLV,iShares Silver Trust
 SLX,VanEck Steel ETF
 SMH,VanEck Semiconductor ETF
 SMIN,iShares MSCI India Small-Cap ETF
 SNDK,Sandisk Corporation
+SNOW,Snowflake Inc.
+SNPS,"Synopsys, Inc."
+SOX,PHLX Semiconductor
+SOXL,Direxion Daily Semiconductor Bull 3X Shares
 SOYB,Teucrium Soybean Fund
 SPLV,Invesco S&P 500 Low Volatility ETF
 SPMO,Invesco S&P 500 Momentum ETF
+SPX,S&P 500
 SPY,State Street SPDR S&P 500 ETF Trust
 SRUUF,Sprott Physical Uranium Trust Fund
+SSEC,SSE Composite Index
 TAN,Invesco Solar ETF
 TBIL,F/m US Treasury 3 Month Bill Fund - ETF Class Shares
+TER,"Teradyne, Inc."
+TGS,Transportadora de Gas del Sur S.A.
+TLN,Talen Energy Corporation
 TLT,iShares 20+ Year Treasury Bond ETF
+TRP,TC Energy Corporation
 TSLA,"Tesla, Inc."
 TUR,iShares MSCI Turkey ETF
 UAE,iShares MSCI UAE ETF
 UGA,"United States Gasoline Fund, LP"
 UNG,"United States Natural Gas Fund, LP"
 URA,Global X Uranium ETF
+USD,US Dollar Index
 USO,"United States Oil Fund, LP"
+UST10Y,CBOE Interest Rate 10 Year T Note
+UST30Y,Treasury Yield 30 Years
 UUP,Invesco DB US Dollar Index Bullish Fund
 V,Visa Inc.
+VALE,Vale S.A.
+VG,"Venture Global, Inc."
 VIX,CBOE Volatility Index
+VLO,Valero Energy Corporation
+VRT,Vertiv Holdings Co
+VST,Vistra Corp.
+VXN,CBOE NASDAQ 100 Voltility
 WEAT,Teucrium Wheat Fund
 WGMI,CoinShares Bitcoin Mining and Digital Power ETF
 WMT,Walmart Inc.
 WOOD,iShares Global Timber & Forestry ETF
+WTIC,Crude Oil Jan 27
 XBI,State Street SPDR S&P Biotech ETF
 XHE,State Street SPDR S&P Health Care Equipment ETF
+XIFR,"XPLR Infrastructure, LP"
 XLE,State Street Energy Select Sector SPDR ETF
 XLF,State Street Financial Select Sector SPDR ETF
 XLG,Invesco S&P 500 Top 50 ETF
@@ -182,3 +270,4 @@ XOP,State Street SPDR S&P Oil & Gas Exploration & Production ETF
 XRT,State Street SPDR S&P Retail ETF
 XTL,State Street SPDR S&P Telecom ETF
 YCS,ProShares UltraShort Yen
+YPF,YPF Sociedad Anónima
