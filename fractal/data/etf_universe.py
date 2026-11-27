@@ -25,7 +25,7 @@ RAW = """
 AAAU, AQWA, ARKG, ARKK, ARKQ, BBN, BDRY, BNO, BUG, BUXX, BWET, CANE, CIBR, CLOX,
 CARZ, CLOZ, COPX, CORN, CPER, DBC, DESK, DRAM, DUST, EDEN, EEM, EIS, EPU, EPHE, EWA,
 EWC, EWG, EWH, EWI, EWJ, EWJV, EWN, EWO, EWQ, EWS, EWY, EWZ, EWZS, EWW, EZA, EFNL,
-EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GII, GLD, GLIN,
+EMXC, ENZL, FCG, FUTY, FXB, FXC, FXE, FXI, FXY, GDX, GDXJ, GDXU, GII, GLD, GLIN,
 GREK, GRNY, COLO, HBDC, HYG, IAK, IBIT, IEF, IGV, IHF, IIGD, INDA, INDY,
 ITA, ITB, IWC, IWO, IWM, IVOL, IVES, IDX, JETS, JNK, JPXN, KEMX, KRE, KSA,
 KWEB, KWT, LIT, LQD, MAGS, MTBA, NCLD, NIKL, NLR, OIH, PALL, PBD, PINK, PJP,
@@ -103,6 +103,24 @@ XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 # ETFs, not against each other. A single name carries idiosyncratic risk the index
 # diversifies away, so a wider RANGE on PANW than on CIBR is construction, not a
 # signal, and three names agreeing is not three pieces of evidence.
+#
+# B, NEM and GDXU were added 27 Nov 2026 on request -- all three IBKR holdings that
+# had been running unscored. B and NEM are gold miners and go in `stock` (1262 bars
+# each); GDXU joins GDX and GDXJ in `commodity` (1262 bars).
+#
+# GDXU IS 3x LEVERAGED, measured not assumed: its daily return regresses on GDX at
+# beta 3.04 with correlation 0.998 over the last 500 sessions. Median daily sigma is
+# 8.61% against GDX's 2.77%, annualised 138% against 45% -- the HIGHEST-volatility
+# name in the universe, above SOXL's 7.12%. Its RANGE is therefore wide in percent
+# terms by construction and is NOT comparable to GDX's; read it against GDX, and
+# remember the VIX unit sizing does not know about single-name leverage, so one unit
+# of GDXU carries roughly three units of miner risk.
+#
+# These four plus GDX/GDXJ, SBSW and HL make gold miners the second dense cluster
+# here, and the correlations say to treat it as one position: B/NEM/GDX/GDXU sit at
+# 0.86-1.00 to each other, GDXU vs GDX is 1.00 to two decimals. GLD is looser at
+# 0.77-0.85, so the metal is a genuinely different read from the miners; the miners
+# are not different reads from each other.
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, GS, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
@@ -113,6 +131,7 @@ BE, VRT, MELI,
 CDNS, SNPS,
 DELL, VALE, KSPI,
 PANW, FTNT,
+B, NEM,
 MPC, VLO, DINO, VG, GEL, AR, DAR, RRC, MPLX, PSX, SHEL, DVN, COP, PR, CVI, PBR, PBF, CEG, TLN, TGS, PAM, YPF, DK, BP, MTDR, CHRD, XIFR, DKL, VST, ENB, TRP, NEE
 """
 
@@ -228,7 +247,7 @@ GROUPS = {
                      "EDEN", "EIS", "EPU", "EPHE", "ENZL", "GREK",
                      "COLO", "GLIN", "INDA", "INDY", "SMIN", "IDX", "JPXN", "SCJ",
                      "KSA", "KWT", "TUR", "UAE", "FXI", "KWEB"],
-    "commodity":    ["GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "DUST",
+    "commodity":    ["GLD", "AAAU", "SLV", "SIL", "SILJ", "GDX", "GDXJ", "GDXU", "DUST",
                      "PALL", "PPLT", "CPER", "COPX", "SRUUF", "DBC", "USO", "BNO", "UGA",
                      "UNG", "FCG", "CORN", "WEAT", "SOYB", "CANE", "BDRY", "BWET"],
     "fixed_income": ["TLT", "IEF", "SHY", "LQD", "HYG", "JNK", "BBN", "BUXX", "CLOX",
