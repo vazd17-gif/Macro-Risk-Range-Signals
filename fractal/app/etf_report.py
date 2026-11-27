@@ -483,14 +483,13 @@ def _trend_change_block(df, dark=True):
     body = "#cfd4dc" if dark else "#5a6270"
     rows = []
 
-    def block(label, rs, note):
+    def block(label, rs):
         if not len(rs):
             return
         rows.append('<tr><td colspan="3" style="padding:12px 0 4px;font-weight:700;'
                     'font-size:11.5px;color:%s;letter-spacing:.05em;text-transform:uppercase;'
                     'white-space:normal;text-align:left;border-bottom:0">'
-                    '%s &nbsp;<span style="font-weight:400;text-transform:none;'
-                    'letter-spacing:0">%s</span></td></tr>' % (dim, label, note))
+                    '%s</td></tr>' % (dim, label))
         for r in rs.itertuples():
             fc = pal.get(r.trend_call_prev, dim)
             tc = pal.get(r.trend_call, dim)
@@ -520,9 +519,9 @@ def _trend_change_block(df, dark=True):
                    line, fc, r.trend_call_prev, dim, tc, r.trend_call,
                    line, mc, mv))
 
-    block("Turned up", up, "the model can hold these again")
-    block("Turned down", down, "a bearish TREND is the full exit")
-    block("Macro and index references", ctx, "context only, never a position")
+    block("Turned up", up)
+    block("Turned down", down)
+    block("Macro and index references", ctx)
     # FIXED layout with explicit column widths. Left to size itself the table ran to
     # 1240px inside a 680px box and put the whole PAGE into horizontal scroll -- on a
     # phone, where this is a PWA, that is the difference between readable and not.
