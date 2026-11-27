@@ -232,11 +232,21 @@ def reprice(df, px=None, edge=S.EDGE, times=None, locks=None, persist=True):
             rd = False
         elif recl:
             bd = False
+        # The ladder is handed the bare EVENT ("reclaimed TRADE") and composes the
+        # instruction onto it. With nothing crossed since the close this fell back to
+        # the daily run's `why`, which is that composition already done -- so the
+        # clause landed twice: "reclaimed TRADE with TREND neutral - buy some back,
+        # wait for TREND to pick a side with TREND neutral - buy some back, wait for
+        # TREND to pick a side", on the dashboard and in the phone alert. `event` is
+        # the column that holds the bare text. A missing one is NaN, which is TRUTHY,
+        # so `or` is not enough to default it.
+        ev = r.get("event")
+        ev = "" if ev is None or ev != ev else str(ev)
         sig, why = S.decide(
             bool(r.get("is_index")), bool(r.get("cash_like")),
             100 * (hi / lo - 1) if (np.isfinite(lo) and np.isfinite(hi) and lo > 0) else 0.0,
             bt, bd, rt, rd,
-            " and ".join(crossed) or (r.get("why") or ""),
+            " and ".join(crossed) or ev,
             buy_low, sell_low, buy_high, sell_high, now_trade, now_trend,
             break_low=break_low, break_high=break_high,
             trend_neutral=bool(r.get("trend_neutral")),

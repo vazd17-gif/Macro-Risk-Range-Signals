@@ -89,6 +89,20 @@ XLE, XBI, XLRE, XLV, XLY, XLG, XOP, XRT, XTL, YCS
 # Nasdaq Cybersecurity), so these two are each other's closest comparison and
 # should be read as a pair; where they disagree, the disagreement is index
 # construction, not the sector.
+#
+# PANW and FTNT were added 27 Nov 2026 on request, to `stock`: Palo Alto Networks
+# (NASDAQ/NGS, USD, 1262 bars) and Fortinet (NASDAQ/NGS, USD, 1262 bars). PANW is an
+# IBKR holding and had been running UNSCORED -- nothing watched it, no alert could
+# fire on it, and its levels had to be computed by hand whenever it came up. Both
+# have five full years of history, so neither is young and the RANGE is calibrated on
+# a real sample.
+#
+# These two make cybersecurity the most densely covered theme in the book: CIBR and
+# BUG at the index level, CRWD, PANW and FTNT as single names. That is deliberate --
+# it is where the IBKR exposure sits -- but read the single names against the two
+# ETFs, not against each other. A single name carries idiosyncratic risk the index
+# diversifies away, so a wider RANGE on PANW than on CIBR is construction, not a
+# signal, and three names agreeing is not three pieces of evidence.
 STOCKS = """
 NVDA, AAPL, MSFT, AMZN, GOOGL, GOOG, AVGO, META, TSLA, BRK-B, MU, LLY, JPM, WMT,
 AMD, V, JNJ, XOM, MA, INTC, ABBV, PLTR, BAC, GS, ORCL, CSCO, COST, CVX, KO, LRCX, CAT,
@@ -98,6 +112,7 @@ DKS, JMKE, SHAK, AEO, ABNB, NOK, NKE,
 BE, VRT, MELI,
 CDNS, SNPS,
 DELL, VALE, KSPI,
+PANW, FTNT,
 MPC, VLO, DINO, VG, GEL, AR, DAR, RRC, MPLX, PSX, SHEL, DVN, COP, PR, CVI, PBR, PBF, CEG, TLN, TGS, PAM, YPF, DK, BP, MTDR, CHRD, XIFR, DKL, VST, ENB, TRP, NEE
 """
 
