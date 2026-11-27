@@ -486,7 +486,7 @@ def _trend_change_block(df, dark=True):
     def block(label, rs, note):
         if not len(rs):
             return
-        rows.append('<tr><td colspan="4" style="padding:12px 0 4px;font-weight:700;'
+        rows.append('<tr><td colspan="3" style="padding:12px 0 4px;font-weight:700;'
                     'font-size:11.5px;color:%s;letter-spacing:.05em;text-transform:uppercase;'
                     'white-space:normal;text-align:left;border-bottom:0">'
                     '%s &nbsp;<span style="font-weight:400;text-transform:none;'
@@ -513,18 +513,12 @@ def _trend_change_block(df, dark=True):
                 '<span style="color:%s">%s</span>'
                 '<span style="color:%s"> &rarr; </span>'
                 '<span style="color:%s;font-weight:700">%s</span></td>'
-                '<td align="right" style="padding:5px 8px;border-bottom:1px solid %s;'
-                'color:%s;vertical-align:top;white-space:nowrap;'
-                'font-variant-numeric:tabular-nums">%+.2f%%</td>'
                 '<td align="right" style="padding:5px 0 5px 8px;border-bottom:1px solid %s;'
-                'color:%s;font-size:11.5px;vertical-align:top;line-height:1.35;'
-                'white-space:normal;font-variant-numeric:tabular-nums">%s</td></tr>'
+                'color:%s;vertical-align:top;white-space:nowrap;'
+                'font-variant-numeric:tabular-nums">%+.2f%%</td></tr>'
                 % (line, tc, r.ticker, dim, GROUP_LABEL.get(r.group, r.group),
                    line, fc, r.trend_call_prev, dim, tc, r.trend_call,
-                   line, mc, mv,
-                   line, dim,
-                   ("%.1f%% away" % abs(r.pct_to_trend))
-                   if np.isfinite(r.pct_to_trend) else "&ndash;"))
+                   line, mc, mv))
 
     block("Turned up", up, "the model can hold these again")
     block("Turned down", down, "a bearish TREND is the full exit")
@@ -537,8 +531,8 @@ def _trend_change_block(df, dark=True):
     # on the page overrides inline. Without it this one inherits 1240px.
     return ('<table width="100%%" cellpadding="0" cellspacing="0" '
             'style="font-size:13px;table-layout:fixed;width:100%%;min-width:0">'
-            '<colgroup><col style="width:38%%"><col style="width:28%%">'
-            '<col style="width:15%%"><col style="width:19%%"></colgroup>%s</table>'
+            '<colgroup><col style="width:48%%"><col style="width:34%%">'
+            '<col style="width:18%%"></colgroup>%s</table>'
             '<div style="color:%s;font-size:11.5px;margin-top:8px;line-height:1.55">'
             'A change of TREND call between the last two closes &mdash; bullish, '
             'bearish or neutral, where neutral means price is within %.1f%% of the '
