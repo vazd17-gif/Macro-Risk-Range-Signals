@@ -1131,6 +1131,27 @@ vol by design.
 
 
 # ----------------------------------------------------------------- newsletter
+# The per-signal lists -- BUY, TRIM LONGS, SELL LONGS, SELL SHORT, TRIM SHORTS,
+# COVER SHORT, WATCHLIST -- are OFF in the letter as of 27 Nov 2026.
+#
+# They were the bulk of it, and they are the least durable thing in it: a range-edge
+# read is a statement about where price is standing, it is remade from scratch every
+# session, and on a broad day it runs to dozens of names. A TREND change is the
+# model saying a name may now be held, or may not be any more, which is the call the
+# ladder is actually built around -- so the letter leads with that instead and does
+# not bury it under a list of range positions.
+#
+# The book's own actions still appear, in PORTFOLIO and in ACTIONS TODAY: what we
+# did is different from what the scan is pointing at. MACRO, MARKET VOLATILITY, the
+# volume outliers and the FULL LIST are unaffected -- every name's levels are still
+# in the letter, so nothing is hidden, it is just not sorted into instruction piles.
+#
+# This is a switch, not a deletion, and the dashboard still shows the sections in
+# full. Set it back to True to restore them; `_nl_section` and the blurbs below are
+# kept intact for that, and nothing else needs changing.
+NEWSLETTER_SIGNAL_SECTIONS = False
+
+
 def _nl_section(title, colour, blurb, rows, kind, NAMES=None):
     NAMES = NAMES or {}
     if rows.empty:
@@ -1175,12 +1196,19 @@ def _nl_section(title, colour, blurb, rows, kind, NAMES=None):
         % (colour, title, len(rows), blurb, "".join(items)))
 
 
-def _explainer():
+def _explainer(sections=None):
     """The "how to read this" block that opens every issue.
 
     Set small and tight: it sits above the signals, so it has to be skimmable by
     someone who already knows it and complete for someone who does not.
+
+    `sections` says whether the per-signal lists are in this letter, because three
+    entries here described them: the neutral note pointed at "the sections below",
+    the summary ended "rather than listed as a BUY", and NEW documented a marker
+    only _nl_section draws. With the lists off, those are a glossary for a letter
+    the reader is not holding.
     """
+    sections = NEWSLETTER_SIGNAL_SECTIONS if sections is None else sections
     terms = [
         ("RISK RANGE",
          "The high and low price is likely to trade between today, from recent "
@@ -1201,16 +1229,25 @@ def _explainer():
          "A third state, and the most common one. When price sits within 1.5% of its "
          "own TREND line it is too close to call, so the name raises no signal at all "
          "&mdash; a crossing there is noise rather than a change of regime. Neutral "
-         "names are greyed out and simply do not appear in the sections below."),
+         + ("names are greyed out and simply do not appear in the sections below."
+            if sections else
+            "is a call in its own right, so moving into or out of it is reported "
+            "above like any other change of TREND.")),
         ("PUTTING THEM TOGETHER",
          "Both bullish is trending long; both bearish is trending short; one of each is "
          "counter-trend. The rule that saves the most money: do not buy the low end of "
-         "the RANGE while TRADE is broken &mdash; wait for TREND to hold. Those names "
-         "are held back rather than listed as a BUY."),
+         "the RANGE while TRADE is broken &mdash; wait for TREND to hold."
+         + (" Those names are held back rather than listed as a BUY." if sections else "")),
         ("NEW",
          "Marks an instruction that changed since the last issue. Anything unmarked is "
          "one you have already been given and that still stands &mdash; the same call, "
-         "not a fresh one."),
+         "not a fresh one.")
+        if sections else
+        ("TREND CHANGES",
+         "What this letter leads with. Every name whose TREND call moved between the "
+         "last two closes &mdash; bullish, bearish or neutral &mdash; split into those "
+         "that turned up and those that turned down. It is a close-to-close read, so "
+         "it does not move during the session."),
         ("VOLUME",
          "How unusual today&rsquo;s volume is for that name, measured in standard "
          "deviations rather than percent &mdash; a +60% day is routine for a thin fund "
@@ -1317,13 +1354,16 @@ def render_newsletter(df, params, generated=None, book=None, closed=None,
                       "signal has not confirmed, or a break that failed to hold."),
     }
     kinds = {"BUY": "long", "SELL SHORT": "short"}
-    sections = "".join(
-        _nl_section(name, SIG_STYLE[name][0], blurbs[name], b[name],
-                    kinds.get(name, "event"), names)
-        for name in S.SECTIONS)
-    if not sections:
-        sections = ('<tr><td style="padding:26px 0;color:#5a6270">No ETF triggered a signal '
-                    'today. Everything on the list is mid-range with no fresh line breaks.</td></tr>')
+    if NEWSLETTER_SIGNAL_SECTIONS:
+        sections = "".join(
+            _nl_section(name, SIG_STYLE[name][0], blurbs[name], b[name],
+                        kinds.get(name, "event"), names)
+            for name in S.SECTIONS)
+        if not sections:
+            sections = ('<tr><td style="padding:26px 0;color:#5a6270">No ETF triggered a signal '
+                        'today. Everything on the list is mid-range with no fresh line breaks.</td></tr>')
+    else:
+        sections = ""
 
     # volume outliers, independent of the price signals
     outl = df[df["vol_flag"].astype(bool)] if "vol_flag" in df else df.iloc[0:0]
@@ -1452,14 +1492,26 @@ def render_newsletter(df, params, generated=None, book=None, closed=None,
             % (" &middot; ".join(bits) or "none", asof, tch))
 
     counts = df["signal"].map(S.LABEL).value_counts().to_dict()
-    chips = "".join(
-        '<span style="display:inline-block;background:%s22;color:%s;border:1px solid %s55;'
-        'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0">'
-        '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s,
-                          counts.get(s, 0))
-        # A chip for a section that is not in the letter is a promise the letter does
-        # not keep -- WATCHLIST has been reading "0" against no section for weeks.
-        for s in SIGNAL_ORDER if counts.get(s, 0))
+    # A chip for a section that is not in the letter is a promise the letter does
+    # not keep -- which is the whole chip row now that the signal sections are off.
+    # So with them off the row counts what the letter DOES lead with: the TREND
+    # changes, in the same up / down split the section uses.
+    if NEWSLETTER_SIGNAL_SECTIONS:
+        chips = "".join(
+            '<span style="display:inline-block;background:%s22;color:%s;border:1px solid %s55;'
+            'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;margin:0 6px 6px 0">'
+            '%s %d</span>' % (SIG_STYLE[s][0], SIG_STYLE[s][0], SIG_STYLE[s][0], s,
+                              counts.get(s, 0))
+            for s in SIGNAL_ORDER if counts.get(s, 0))
+    else:
+        _up, _down, _ctx = trend_changes(df)
+        chips = "".join(
+            '<span style="display:inline-block;background:%s22;color:%s;border:1px solid %s55;'
+            'border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;'
+            'margin:0 6px 6px 0">%s %d</span>' % (c, c, c, lab, n)
+            for lab, n, c in (("TREND UP", len(_up), "#0b8f6e"),
+                              ("TREND DOWN", len(_down), "#d33"))
+            if n)
     # Neutral is a state, not the absence of one, so it is counted where the reader
     # can see it. These names raise no directional signal at all.
     if n_neutral:
