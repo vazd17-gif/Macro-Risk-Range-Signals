@@ -357,6 +357,24 @@ def classify_state(trade_bull, trend_bull):
     return classify(bool(trade_bull), bool(trend_bull))
 
 
+TREND_BULL, TREND_BEAR, TREND_FLAT = "bullish", "bearish", "neutral"
+
+
+def _trend_call(spot, trend, sigma=float("nan")):
+    """The TREND read as one of bullish / bearish / neutral, or None if undefined.
+
+    The same three-way call the ladder acts on: inside the neutral band the model has
+    no opinion, which is a state in its own right and not a weak version of either
+    side. Takes an explicit sigma so a PAST bar can be called with that bar's own
+    band rather than today's.
+    """
+    if not (np.isfinite(spot) and np.isfinite(trend) and trend):
+        return None
+    if abs(spot / trend - 1.0) <= neutral_band_for(sigma):
+        return TREND_FLAT
+    return TREND_BULL if spot > trend else TREND_BEAR
+
+
 def _days_since_flip(flags: pd.Series):
     """Sessions since the boolean series last changed value, and its prior value."""
     f = flags.dropna()
@@ -408,6 +426,29 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         np.isfinite(trend) and trend and abs(spot / trend - 1.0) <= nband)
     if trend_neutral:
         trend_bull = None
+
+    # THE TREND CALL, AND WHETHER IT CHANGED ON THIS SESSION.
+    #
+    # `days_since_trend_flip` cannot answer "did the TREND call change today": it is
+    # built from the raw spot>trend boolean and knows nothing about the neutral band,
+    # so it counts a crossing that left price inside the band -- where the model has
+    # deliberately stopped having an opinion -- as a flip, and misses the sessions
+    # where price left the band without crossing the line, which IS a change of call.
+    #
+    # So the call is recomputed on the previous bar the same way it is computed on
+    # this one, against that bar's own TREND and sigma, and the two are compared.
+    # Both are close-to-close reads; nothing intraday can change either, which is
+    # why live.py carries these columns through untouched.
+    trend_call = _trend_call(spot, trend, sigma)
+    trend_call_prev = None
+    if len(close) >= 2 and "trend" in lines:
+        p_spot = float(close.iloc[-2])
+        p_trend = lines["trend"].iloc[-2]
+        p_sigma = (float(rng["sigma"].iloc[-2])
+                   if "sigma" in rng and len(rng) >= 2 else float("nan"))
+        trend_call_prev = _trend_call(p_spot, p_trend, p_sigma)
+    trend_changed = bool(trend_call and trend_call_prev
+                         and trend_call != trend_call_prev)
 
     d_trade, prev_trade = _days_since_flip(states.get("trade_bull", pd.Series(dtype=object)))
     d_trend, prev_trend = _days_since_flip(states.get("trend_bull", pd.Series(dtype=object)))
@@ -565,6 +606,9 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         "pct_to_trend": 100 * (trend / spot - 1) if np.isfinite(trend) else np.nan,
         "days_since_trade_flip": d_trade,
         "days_since_trend_flip": d_trend,
+        "trend_call": trend_call,
+        "trend_call_prev": trend_call_prev,
+        "trend_changed": trend_changed,
         "state": states["state"].iloc[-1] if "state" in states else None,
         "signal": sig,
         "why": why,
@@ -594,6 +638,10 @@ def evaluate(ticker, ohlc, params, edge_buy=EDGE_BUY, edge_sell=EDGE_SELL,
         "sell_high": bool(sell_high),
         "below_trade": bool(below_trade),
         "day_pct": day_pct,
+        # The same figure, under a name the live pass does NOT overwrite. `day_pct`
+        # becomes the intraday move on a live build, which is the wrong day to put
+        # beside a TREND change that happened on this close.
+        "asof_day_pct": day_pct,
         # Carried so the intraday re-pricer can see a break that happened on an
         # earlier close. Without them it only knows about lines crossed since the
         # open, and a name that broke two days ago and has since drifted to the low

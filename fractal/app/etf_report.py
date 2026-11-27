@@ -425,6 +425,131 @@ def _index_rows(idx):
     return out
 
 
+_CALL_RANK = {S.TREND_BEAR: 0, S.TREND_FLAT: 1, S.TREND_BULL: 2}
+_CALL_COLOUR = {S.TREND_BEAR: "#ef5350", S.TREND_FLAT: "#8b94a5", S.TREND_BULL: "#0ea37f"}
+_CALL_COLOUR_LIGHT = {S.TREND_BEAR: "#d33", S.TREND_FLAT: "#8b94a5", S.TREND_BULL: "#0b8f6e"}
+
+
+def trend_changes(df):
+    """Names whose TREND call changed on the session the levels come from.
+
+    TREND is the read that decides whether a position is held at all, so a change in
+    it is the most consequential thing the model can say about a name -- and before
+    this it was visible only by diffing two days of output by hand.
+
+    Two deliberate choices in what counts:
+
+    * The comparison is of the three-way CALL -- bullish / bearish / neutral -- on
+      this close against the same call on the previous close. Not the raw side of the
+      line: `days_since_trend_flip` ignores the neutral band, so it reports a
+      crossing that left price inside the band, where the model has stopped having an
+      opinion, and stays silent when price leaves the band without crossing, which
+      genuinely changes what the ladder does.
+    * Not `broke_trend` / `recl_trend` either. Those stay true for FRESH_DAYS so the
+      report can keep showing recent news, which means a section built on them would
+      list three sessions of changes under today's date.
+
+    Returns (improving, deteriorating, context) -- the first two tradeable, the last
+    the macro and index references, which change TREND without ever being a position.
+    """
+    empty = df.iloc[0:0]
+    if "trend_changed" not in df:
+        return empty, empty, empty
+    ch = df[df["trend_changed"].fillna(False).astype(bool)].copy()
+    if ch.empty:
+        return empty, empty, empty
+    ch["_from"] = ch["trend_call_prev"].map(_CALL_RANK)
+    ch["_to"] = ch["trend_call"].map(_CALL_RANK)
+    ch = ch[ch["_from"].notna() & ch["_to"].notna()]
+    ref = pd.Series(False, index=ch.index)
+    for col in ("is_index", "is_macro"):
+        if col in ch:
+            ref = ref | ch[col].fillna(False).astype(bool)
+    key = "asof_day_pct" if "asof_day_pct" in ch else "day_pct"
+    live = ch[~ref].sort_values(key, ascending=False)
+    up = live[live["_to"] > live["_from"]]
+    down = live[live["_to"] < live["_from"]]
+    return up, down, ch[ref].sort_values("ticker")
+
+
+def _trend_change_block(df, dark=True):
+    """The TREND changes as HTML rows, for the dashboard (dark) or the email (light)."""
+    up, down, ctx = trend_changes(df)
+    if not len(up) and not len(down) and not len(ctx):
+        return ""
+    pal = _CALL_COLOUR if dark else _CALL_COLOUR_LIGHT
+    dim = "var(--dim)" if dark else "#8b94a5"
+    line = "var(--line)" if dark else "#e6e8ec"
+    body = "#cfd4dc" if dark else "#5a6270"
+    rows = []
+
+    def block(label, rs, note):
+        if not len(rs):
+            return
+        rows.append('<tr><td colspan="4" style="padding:12px 0 4px;font-weight:700;'
+                    'font-size:11.5px;color:%s;letter-spacing:.05em;text-transform:uppercase;'
+                    'white-space:normal;text-align:left;border-bottom:0">'
+                    '%s &nbsp;<span style="font-weight:400;text-transform:none;'
+                    'letter-spacing:0">%s</span></td></tr>' % (dim, label, note))
+        for r in rs.itertuples():
+            fc = pal.get(r.trend_call_prev, dim)
+            tc = pal.get(r.trend_call, dim)
+            # The move on the session that CHANGED the call, not today's live move:
+            # on a live build `day_pct` is the intraday change, a different day.
+            mv = getattr(r, "asof_day_pct", np.nan)
+            mv = mv if np.isfinite(mv) else 0.0
+            mc = ("#0ea37f" if dark else "#0b8f6e") if mv >= 0 else ("#ef5350" if dark else "#d33")
+            # The group goes UNDER the ticker rather than beside it, and only the
+            # short number column refuses to wrap. Side by side with nowrap the row
+            # needed 356px against the 349px a phone gives it, and every cell but
+            # the first clipped.
+            rows.append(
+                '<tr><td style="padding:5px 8px 5px 0;border-bottom:1px solid %s;'
+                'vertical-align:top;white-space:normal;text-align:left">'
+                '<div style="font-weight:700;color:%s">%s</div>'
+                '<div style="color:%s;font-size:11px;line-height:1.3">%s</div></td>'
+                '<td style="padding:5px 8px;border-bottom:1px solid %s;font-size:12px;'
+                'vertical-align:top;line-height:1.35;white-space:normal;text-align:left">'
+                '<span style="color:%s">%s</span>'
+                '<span style="color:%s"> &rarr; </span>'
+                '<span style="color:%s;font-weight:700">%s</span></td>'
+                '<td align="right" style="padding:5px 8px;border-bottom:1px solid %s;'
+                'color:%s;vertical-align:top;white-space:nowrap;'
+                'font-variant-numeric:tabular-nums">%+.2f%%</td>'
+                '<td align="right" style="padding:5px 0 5px 8px;border-bottom:1px solid %s;'
+                'color:%s;font-size:11.5px;vertical-align:top;line-height:1.35;'
+                'white-space:normal;font-variant-numeric:tabular-nums">%s</td></tr>'
+                % (line, tc, r.ticker, dim, GROUP_LABEL.get(r.group, r.group),
+                   line, fc, r.trend_call_prev, dim, tc, r.trend_call,
+                   line, mc, mv,
+                   line, dim,
+                   ("%.1f%% away" % abs(r.pct_to_trend))
+                   if np.isfinite(r.pct_to_trend) else "&ndash;"))
+
+    block("Turned up", up, "the model can hold these again")
+    block("Turned down", down, "a bearish TREND is the full exit")
+    block("Macro and index references", ctx, "context only, never a position")
+    # FIXED layout with explicit column widths. Left to size itself the table ran to
+    # 1240px inside a 680px box and put the whole PAGE into horizontal scroll -- on a
+    # phone, where this is a PWA, that is the difference between readable and not.
+    # `min-width:0` is load-bearing: the dashboard's global CSS sets
+    # `table { min-width: 1240px }` for the big scan table, which every other table
+    # on the page overrides inline. Without it this one inherits 1240px.
+    return ('<table width="100%%" cellpadding="0" cellspacing="0" '
+            'style="font-size:13px;table-layout:fixed;width:100%%;min-width:0">'
+            '<colgroup><col style="width:38%%"><col style="width:28%%">'
+            '<col style="width:15%%"><col style="width:19%%"></colgroup>%s</table>'
+            '<div style="color:%s;font-size:11.5px;margin-top:8px;line-height:1.55">'
+            'A change of TREND call between the last two closes &mdash; bullish, '
+            'bearish or neutral, where neutral means price is within %.1f%% of the '
+            'line and the model deliberately has no opinion. The percentage is that '
+            'session&rsquo;s own close-to-close move, not today&rsquo;s. '
+            'Read close to close: '
+            'TREND is never re-read against an intraday price, so this section does '
+            'not move during the session.</div>'
+            % ("".join(rows), body, 100 * S.NEUTRAL_BAND))
+
+
 def _macro_block(df, dark=True):
     """Hedgeye's "Our Levels" in our own numbers: the indices, yields, currencies
     and commodities that frame everything else.
@@ -885,6 +1010,28 @@ def render_dashboard(df, params, generated=None, book=None, closed=None,
             '<tbody>%s</tbody></table>'
             % (sub, _actions_block(actions, dark=True, held=_held(book))))
 
+    # TREND decides whether a name is held at all, so a change in it outranks
+    # everything in the scan table below. It sits under the book because the book is
+    # what the reader acts on first, and above the macro block because a TREND change
+    # in a name we can own matters more than a level on something we cannot.
+    tch = _trend_change_block(df, dark=True)
+    if tch:
+        up, down, ctx = trend_changes(df)
+        bits = []
+        if len(up):
+            bits.append("%d up" % len(up))
+        if len(down):
+            bits.append("%d down" % len(down))
+        if len(ctx):
+            bits.append("%d reference" % len(ctx))
+        pf_html += (
+            '<h2 style="font-size:15px;margin:6px 0 10px;letter-spacing:-.01em">'
+            'TREND changes '
+            '<span style="color:var(--dim);font-weight:400;font-size:13px">'
+            '&middot; on the %s close &middot; %s</span></h2>'
+            '<div style="margin-bottom:24px;max-width:680px">%s</div>'
+            % (asof, " &middot; ".join(bits), tch))
+
     heads = ["ETF", "Spot", "Range low", "Range high", "In range",
              "% to low", "% to high", "TRADE", "TREND",
              "Volume", "z vs 1m", "z vs 3m", "Signal", "Why"]
@@ -1280,6 +1427,30 @@ def render_newsletter(df, params, generated=None, book=None, closed=None,
                            tc, _f(r.trade), nc, _f(r.trend),
                            _z_cell(r.vol_z_1m), _z_cell(r.vol_z_3m)))
 
+    # Same section as the dashboard's, in the email palette. It goes above the
+    # signal sections: whether a name is still holdable comes before where it sits
+    # in its range.
+    tch = _trend_change_block(df, dark=False)
+    trend_html = ""
+    if tch:
+        up, down, ctx = trend_changes(df)
+        bits = []
+        if len(up):
+            bits.append("%d up" % len(up))
+        if len(down):
+            bits.append("%d down" % len(down))
+        if len(ctx):
+            bits.append("%d reference" % len(ctx))
+        trend_html = (
+            '<tr><td style="padding:22px 0 6px;border-top:1px solid #e6e8ec">'
+            '<span style="display:inline-block;background:#111;color:#fff;font-size:12px;'
+            'font-weight:700;letter-spacing:.06em;padding:4px 10px;border-radius:4px">'
+            'TREND CHANGES &nbsp;(%s)</span>'
+            '<div style="color:#8b94a5;font-size:11.5px;margin-top:6px">'
+            'names whose TREND call changed on the %s close</div></td></tr>'
+            '<tr><td style="padding-top:4px">%s</td></tr>'
+            % (" &middot; ".join(bits) or "none", asof, tch))
+
     counts = df["signal"].map(S.LABEL).value_counts().to_dict()
     chips = "".join(
         '<span style="display:inline-block;background:%s22;color:%s;border:1px solid %s55;'
@@ -1311,6 +1482,7 @@ levels for this session, off the %s close</div>
 %s
 %s
 %s
+%s
 
 <tr><td style="padding:26px 0 6px;border-top:1px solid #e6e8ec">
 <div style="font-weight:700;font-size:12px;color:#8b94a5;letter-spacing:.06em">FULL LIST</div>
@@ -1334,7 +1506,7 @@ names qualify and sizes DOWN into high vol by design.</div>
 </td></tr>
 </table></td></tr></table></div>
 """ % (_session_label(asof), _universe_label(df), asof, chips,
-       _explainer(), pf, sections,
+       _explainer(), pf, trend_html, sections,
        "".join(app))
 
 
